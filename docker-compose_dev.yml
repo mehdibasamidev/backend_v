@@ -1,0 +1,56 @@
+services:
+  db:
+    image: postgres:15
+    container_name: fitness_db
+    hostname: db
+    networks:
+      - fitness_net
+    restart: always
+    env_file:
+      - ./.env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  minio:
+    image: minio/minio
+    container_name: fitness_minio
+    networks:
+      - fitness_net
+    env_file:
+      - ./.env
+    command: server /data --console-address ":9090"
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000" # S3 API
+      - "9090:9090" # Console UI
+    restart: always
+
+  # Django service (this would be your app container)
+  # django:
+  #   container_name: django_fitness
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   volumes:
+  #     - .:/app
+  #   networks:
+  #     - fitness_net
+  #   ports:
+  #     - "8000:8000"
+  #   env_file:
+  #     - ./.env
+  #   depends_on:
+  #     - db
+  #     - minio
+  #   command: python manage.py runserver 0.0.0.0:8000
+
+volumes:
+  postgres_data:
+  minio_data:
+
+networks:
+  fitness_net:
+    external: true

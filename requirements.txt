@@ -1,0 +1,54 @@
+# Core Django and Extensions
+Django~=4.2
+django-extensions~=3.2
+django-filter~=23.2
+django-timezone-field~=5.1
+
+# REST Framework and API
+djangorestframework~=3.14
+djangorestframework-jsonapi~=6.1
+djangorestframework-simplejwt~=5.3
+drf-yasg~=1.21
+
+# Storage and Media Handling
+Pillow~=10.0
+django-storages~=1.14
+django-minio-storage~=0.5  # Only use one: pick this OR django-minio-backend
+django-minio-backend~=3.5  # Redundant with above (choose one)
+minio~=7.1
+
+# PostgreSQL
+psycopg2-binary~=2.9
+
+# CORS and Environment Management
+django-cors-headers~=4.2
+python-decouple~=3.8
+python-dotenv~=1.0  # Only needed if you're manually loading .env, otherwise decouple is enough
+
+# Async/Websockets
+channels~=4.0
+channels-redis~=4.1
+daphne~=4.0
+
+# Misc
+requests~=2.31
+tqdm~=4.66
+google-auth~=2.25
+
+# translation
+# django-parler~=2.3
+# django-parler-rest~=2.0
+
+# Optional Fields
+# django-multiselectfield~=0.1
+
+# Testing
+pytest~=8.3
+pytest-django~=4.6
+
+# Payments
+stripe~=12.2
+
+# gunicorn 
+gunicorn ~=25.3
+uvicorn[standard] ~=0.46

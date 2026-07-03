@@ -1,0 +1,9 @@
+{
+  "editor.formatOnSave": true,
+  "cSpell.words": ["corsheaders", "parler", "yasg"],
+  "python-envs.defaultEnvManager": "ms-python.python:conda",
+  "python-envs.defaultPackageManager": "ms-python.python:conda"
+  // "[python]": {
+  //     "editor.defaultFormatter": "mikoz.black-py"
+  // },
+}

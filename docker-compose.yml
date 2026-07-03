@@ -1,0 +1,60 @@
+services:
+  db:
+    image: postgres:15
+    container_name: fitness_db
+    restart: always
+    env_file: .env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432" # Private
+    networks:
+      - fitness_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: fitness_redis
+    restart: always
+    networks:
+      - fitness_net
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  minio:
+    image: minio/minio
+    container_name: fitness_minio
+    env_file: .env
+    command: server /data --console-address ":9090"
+    volumes:
+      - minio_data:/data
+    ports:
+      - "127.0.0.1:9000:9000"  # S3 API (Private to HAProxy)
+      - "127.0.0.1:9090:9090"  # Web UI (Private to HAProxy)
+    restart: always
+    networks:
+      - fitness_net
+
+  django:
+    build: .
+    container_name: django_fitness
+    restart: always
+    env_file: .env
+    command: ["sh", "/app/app.sh"]
+    # volumes:
+    #   - .:/app
+    depends_on:
+      - db
+      - redis
+      - minio
+    ports:
+      - "127.0.0.1:8000:8000"
+    networks:
+      - fitness_net
+
+volumes:
+  postgres_data:
+  minio_data:
+
+networks:
+  fitness_net:
+    driver: bridge # Change to bridge for internal container communication
