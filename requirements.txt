@@ -52,3 +52,4 @@ stripe~=12.2
 # gunicorn 
 gunicorn ~=25.3
 uvicorn[standard] ~=0.46
+anthropic ~=0.116.0

@@ -23,7 +23,6 @@ urlpatterns = [
 
     # API endpoints
     path('api/v1/', include('apps.account.urls')),
-    # path('api/v1/', include('apps.payments.urls')),
     path('api/v1/', include('apps.chat.urls')),
 
     # Swagger JSON and YAML endpoints
