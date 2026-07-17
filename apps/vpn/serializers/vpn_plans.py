@@ -5,11 +5,15 @@ from apps.vpn.services.pricing import calculate_custom_plan_price
 
 
 class VpnPlanSerializer(serializers.ModelSerializer):
+    is_unlimited_volume = serializers.BooleanField(read_only=True)
+    is_unlimited_users = serializers.BooleanField(read_only=True)
+
     class Meta:
         model = VpnPlan
         fields = [
             "id", "name", "description", "volume_gb", "duration_days",
             "max_concurrent_users", "price", "is_featured",
+            "is_unlimited_volume", "is_unlimited_users",
         ]
 
 

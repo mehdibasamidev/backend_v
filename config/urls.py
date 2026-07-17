@@ -24,6 +24,7 @@ urlpatterns = [
     # API endpoints
     path('api/v1/', include('apps.account.urls')),
     path('api/v1/', include('apps.chat.urls')),
+    path('api/v1/', include('apps.vpn.urls')),
 
     # Swagger JSON and YAML endpoints
     re_path(r'^swagger(?P<format>\.json|\.yaml)$', schema_view.without_ui(cache_timeout=0), name='schema-json'),

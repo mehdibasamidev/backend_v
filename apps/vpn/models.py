@@ -43,6 +43,16 @@ class VpnPlan(models.Model):
     def __str__(self):
         return f"{self.name} ({self.volume_gb}GB/{self.duration_days}d)"
 
+    @property
+    def is_unlimited_volume(self):
+        # Convention shared with the 3x-ui panel: volume_gb == 0 means "no cap".
+        return self.volume_gb == 0
+
+    @property
+    def is_unlimited_users(self):
+        # Convention shared with the 3x-ui panel: max_concurrent_users == 0 means "no cap".
+        return self.max_concurrent_users == 0
+
 
 class VpnPricingConfig(models.Model):
     """
@@ -151,7 +161,19 @@ class UserVpnSubscription(models.Model):
         return max(remaining, 0)
 
     @property
+    def is_unlimited_volume(self):
+        # Convention shared with the 3x-ui panel: volume_gb == 0 means "no cap".
+        return self.volume_gb == 0
+
+    @property
+    def is_unlimited_users(self):
+        # Convention shared with the 3x-ui panel: max_concurrent_users == 0 means "no cap".
+        return self.max_concurrent_users == 0
+
+    @property
     def remaining_volume_gb(self):
+        if self.is_unlimited_volume:
+            return None
         total_bytes = self.volume_gb * (1024 ** 3)
         remaining = total_bytes - self.used_traffic_bytes
         return max(round(remaining / (1024 ** 3), 2), 0)

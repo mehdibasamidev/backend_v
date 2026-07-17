@@ -5,7 +5,7 @@ from rest_framework.parsers import MultiPartParser, JSONParser
 from drf_yasg.utils import swagger_auto_schema
 
 from apps.vpn.models import UserVpnSubscription, SubscriptionStatusChoices
-from apps.vpn.serializers import PaymentProofSubmitSerializer
+from apps.vpn.serializers.payments import PaymentProofSubmitSerializer
 from apps.vpn.services.ai_receipt import analyze_payment_receipt
 from config.utils.response import SuccessResponse, BadRequestResponse, ServerErrorResponse
 

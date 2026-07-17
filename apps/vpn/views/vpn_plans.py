@@ -5,7 +5,7 @@ from rest_framework.parsers import JSONParser
 from drf_yasg.utils import swagger_auto_schema
 
 from apps.vpn.models import VpnPlan, VpnPricingConfig
-from apps.vpn.serializers import (
+from apps.vpn.serializers.vpn_plans import (
     VpnPlanSerializer,
     CustomPlanOptionsSerializer,
     CustomPlanQuoteSerializer,

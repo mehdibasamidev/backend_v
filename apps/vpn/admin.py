@@ -51,6 +51,8 @@ class UserVpnSubscriptionAdmin(admin.ModelAdmin):
     remaining_days_display.short_description = "Remaining days"
 
     def remaining_volume_display(self, obj):
+        if obj.is_unlimited_volume:
+            return "Unlimited"
         return f"{obj.remaining_volume_gb} GB"
     remaining_volume_display.short_description = "Remaining volume"
 

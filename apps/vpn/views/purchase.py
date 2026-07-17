@@ -6,7 +6,8 @@ from drf_yasg.utils import swagger_auto_schema
 from rest_framework import serializers
 
 from apps.vpn.models import VpnPlan, UserVpnSubscription, PlanSourceChoices, SubscriptionStatusChoices
-from apps.vpn.serializers import CustomPlanQuoteSerializer, UserVpnSubscriptionSerializer
+from apps.vpn.serializers.vpn_plans import CustomPlanQuoteSerializer
+from apps.vpn.serializers.subscriptions import UserVpnSubscriptionSerializer
 from config.utils.response import SuccessResponse, BadRequestResponse, ServerErrorResponse
 from config.utils.custom_serializers import create_response_serializer
 from config.utils.exceptions import AppException

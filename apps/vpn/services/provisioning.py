@@ -77,7 +77,7 @@ def sync_subscription_usage(subscription):
 
         if subscription.expires_at and timezone.now() > subscription.expires_at:
             subscription.status = SubscriptionStatusChoices.EXPIRED
-        elif subscription.remaining_volume_gb <= 0:
+        elif not subscription.is_unlimited_volume and subscription.remaining_volume_gb <= 0:
             subscription.status = SubscriptionStatusChoices.EXPIRED
 
         subscription.save(update_fields=["used_traffic_bytes", "last_synced_at", "status", "updated_at"])
