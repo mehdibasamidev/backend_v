@@ -62,12 +62,19 @@ class VpnPricingConfig(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
     price_per_gb = models.DecimalField(max_digits=10, decimal_places=2)
-    price_per_day = models.DecimalField(max_digits=10, decimal_places=2)
+    price_per_extra_days = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        help_text="Charged only for days beyond free_days",
+    )
     price_per_extra_user = models.DecimalField(
         max_digits=10, decimal_places=2,
         help_text="Price for each concurrent user beyond the first",
     )
     base_price = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0"))
+    free_days = models.PositiveIntegerField(
+        default=30,
+        help_text="First N days of a custom plan's duration are free; only days beyond this are billed",
+    )
 
     min_gb = models.PositiveIntegerField(default=10)
     max_gb = models.PositiveIntegerField(default=1000)

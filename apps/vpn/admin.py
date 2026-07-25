@@ -20,7 +20,7 @@ class VpnPlanAdmin(admin.ModelAdmin):
 
 @admin.register(VpnPricingConfig)
 class VpnPricingConfigAdmin(admin.ModelAdmin):
-    list_display = ("price_per_gb", "price_per_day", "price_per_extra_user", "is_active", "updated_at")
+    list_display = ("price_per_gb", "price_per_extra_days", "price_per_extra_user", "is_active", "updated_at")
     list_filter = ("is_active",)
 
 

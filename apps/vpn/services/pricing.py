@@ -23,11 +23,12 @@ def calculate_custom_plan_price(volume_gb: int, duration_days: int, max_concurre
         raise BadRequestException(f"Concurrent users must be between {config.min_users} and {config.max_users}")
 
     extra_users = max(max_concurrent_users - 1, 0)
+    billable_days = max(duration_days - config.free_days, 0)
 
     price = (
         config.base_price
         + (Decimal(volume_gb) * config.price_per_gb)
-        + (Decimal(duration_days) * config.price_per_day)
+        + (Decimal(billable_days) * config.price_per_extra_days)
         + (Decimal(extra_users) * config.price_per_extra_user)
     )
     return price.quantize(Decimal("0.01"))

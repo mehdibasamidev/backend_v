@@ -47,7 +47,7 @@ class CustomPlanOptionsSerializer(serializers.ModelSerializer):
     class Meta:
         model = VpnPricingConfig
         fields = [
-            "price_per_gb", "price_per_day", "price_per_extra_user", "base_price",
+            "price_per_gb", "price_per_extra_days", "price_per_extra_user", "base_price", "free_days",
             "min_gb", "max_gb", "gb_step",
             "min_days", "max_days",
             "min_users", "max_users",

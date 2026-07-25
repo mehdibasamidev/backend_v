@@ -1,12 +1,14 @@
 from django.urls import path
 
-from apps.vpn.views.vpn_plans import VpnPlanListView, CustomPlanOptionsView, CustomPlanQuoteView
+from apps.vpn.views.plans import VpnPlanListView, CustomPlanOptionsView, CustomPlanQuoteView
 from apps.vpn.views.purchase import PurchaseFixedPlanView, PurchaseCustomPlanView
 from apps.vpn.views.payments import PaymentProofUploadView
 from apps.vpn.views.dashboard import UserVpnSubscriptionListView
 from apps.vpn.views.admin_actions import ReviewPaymentProofView
+from apps.vpn.views.payment_info import PaymentInfoView
 
 urlpatterns = [
+    path("vpn/payment-info/", PaymentInfoView.as_view(), name="vpn-payment-info"),
     path("vpn/plans/", VpnPlanListView.as_view(), name="vpn-plan-list"),
     path("vpn/plans/custom/options/", CustomPlanOptionsView.as_view(), name="vpn-custom-plan-options"),
     path("vpn/plans/custom/quote/", CustomPlanQuoteView.as_view(), name="vpn-custom-plan-quote"),
