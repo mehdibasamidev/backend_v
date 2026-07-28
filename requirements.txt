@@ -56,3 +56,4 @@ anthropic ~=0.116.0
 
 # minio
 boto3~=1.43
+whitenoise
