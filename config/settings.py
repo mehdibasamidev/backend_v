@@ -1,7 +1,6 @@
 from pathlib import Path
 from decouple import config, Csv
 from datetime import timedelta
-import os
 
 # BASE DIR
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -165,10 +164,10 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
 
 # minio settings
-AWS_ACCESS_KEY_ID = os.getenv("MINIO_ROOT_USER")
-AWS_SECRET_ACCESS_KEY = os.getenv("MINIO_ROOT_PASSWORD")
-AWS_STORAGE_BUCKET_NAME = os.getenv("MINIO_BUCKET_NAME", "media")
-AWS_S3_ENDPOINT_URL = os.getenv("MINIO_ENDPOINT", "http://localhost:9000")
+AWS_ACCESS_KEY_ID = config("MINIO_ROOT_USER", default="minioadminme")
+AWS_SECRET_ACCESS_KEY = config("MINIO_ROOT_PASSWORD", default="minioadminme")
+AWS_STORAGE_BUCKET_NAME = config("MINIO_BUCKET_NAME", default="media")
+AWS_S3_ENDPOINT_URL = config("MINIO_ENDPOINT", default="http://localhost:9000")
 AWS_S3_FILE_OVERWRITE = False
 AWS_DEFAULT_ACL = None
 AWS_S3_ADDRESSING_STYLE = "path"
@@ -200,8 +199,8 @@ AWS_S3_ADDRESSING_STYLE = "path"
 AUTH_USER_MODEL = 'account.User'
 
 # Stripe
-STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
-STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
+STRIPE_SECRET_KEY = config("STRIPE_SECRET_KEY", default="")
+STRIPE_WEBHOOK_SECRET = config("STRIPE_WEBHOOK_SECRET", default="")
 STRIPE_CURRENCY = "usd"
 PLATFORM_FEE_PERCENT = 20  # %
 
@@ -216,3 +215,12 @@ CHANNEL_LAYERS = {
         },
     },
 }
+
+# Payment Card Information (for testing purposes)
+PAYMENT_CARD_NUMBER = config("PAYMENT_CARD_NUMBER", default="4242424242424242")
+PAYMENT_CARD_HOLDER = config("PAYMENT_CARD_HOLDER", default="N/V")
+
+# X-UI Panel Information
+XUI_PANEL_URL = config("XUI_PANEL_URL", default="http://localhost:8080")
+XUI_USERNAME = config("XUI_USERNAME", default="admin")
+XUI_PASSWORD = config("XUI_PASSWORD", default="admin")
