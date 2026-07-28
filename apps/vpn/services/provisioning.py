@@ -11,7 +11,7 @@ def _build_subscription_link(client_email):
     sub_domain = getattr(settings, "XUI_SUBSCRIPTION_BASE_URL", "").rstrip("/")
     if not sub_domain:
         return ""
-    return f"{sub_domain}/sub/{client_email}"
+    return f"{sub_domain}/meh/{client_email}"
 
 
 def activate_subscription(subscription):
