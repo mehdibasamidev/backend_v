@@ -195,7 +195,17 @@ class UserVpnSubscription(models.Model):
 
 
 def payment_proof_upload_to(instance, filename):
-    return f"vpn/payment_proofs/{instance.subscription.user_id}/{instance.subscription_id}/{filename}"
+    """
+    مسیر ذخیره فیش پرداخت کاربر:
+    users/<user_id>/proofs/<subscription_id>/<short_uuid>.<ext>
+    """
+    # ext = os.path.splitext(filename)[1].lower()
+    # short_uuid = uuid.uuid4().hex[:10]
+    # استخراج user_id از طریق رابطه‌ی subscription
+    user_id = instance.subscription.user_id
+    sub_id = instance.subscription_id
+
+    return f"users/{user_id}/proofs/{sub_id}/{filename}"
 
 
 class PaymentProof(models.Model):
@@ -208,7 +218,7 @@ class PaymentProof(models.Model):
     subscription = models.OneToOneField(
         UserVpnSubscription, on_delete=models.CASCADE, related_name="payment_proof",
     )
-    receipt_image = models.FileField(upload_to=payment_proof_upload_to, blank=True)
+    receipt_image = models.FileField(upload_to=payment_proof_upload_to, max_length=500, blank=True)
     receipt_text = models.TextField(blank=True, help_text="Transaction reference / free text note from the user")
 
     ai_checked = models.BooleanField(default=False)
