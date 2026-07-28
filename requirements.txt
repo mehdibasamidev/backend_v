@@ -53,3 +53,6 @@ stripe~=12.2
 gunicorn ~=25.3
 uvicorn[standard] ~=0.46
 anthropic ~=0.116.0
+
+# minio
+boto3~=1.43

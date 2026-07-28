@@ -224,3 +224,8 @@ PAYMENT_CARD_HOLDER = config("PAYMENT_CARD_HOLDER", default="N/V")
 XUI_PANEL_URL = config("XUI_PANEL_URL", default="http://localhost:8080")
 XUI_USERNAME = config("XUI_USERNAME", default="admin")
 XUI_PASSWORD = config("XUI_PASSWORD", default="admin")
+XUI_DEFAULT_INBOUND_ID = config("XUI_DEFAULT_INBOUND_ID", default="")
+XUI_SUBSCRIPTION_BASE_URL = config("XUI_SUBSCRIPTION_BASE_URL", default="")
+XUI_API_BASE_PATH = config("XUI_API_BASE_PATH", "/panel/api/inbounds")
+
+ANTHROPIC_API_KEY = config("ANTHROPIC_API_KEY", "")  # اختیاری، فقط برای بررسی AI فیش
