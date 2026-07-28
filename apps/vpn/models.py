@@ -146,8 +146,9 @@ class UserVpnSubscription(models.Model):
     last_synced_at = models.DateTimeField(null=True, blank=True)
 
     # 3x-ui panel linkage
-    xui_inbound_id = models.IntegerField(null=True, blank=True)
+    xui_inbound_ids = models.JSONField(default=list, blank=True)
     xui_client_uuid = models.CharField(max_length=64, null=True, blank=True)
+    xui_client_subid = models.CharField(max_length=64, null=True, blank=True)
     xui_client_email = models.CharField(max_length=150, null=True, blank=True, unique=True)
     subscription_link = models.URLField(max_length=500, blank=True)
 

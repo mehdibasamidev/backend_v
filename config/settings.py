@@ -230,5 +230,6 @@ XUI_PASSWORD = config("XUI_PASSWORD", default="admin")
 XUI_DEFAULT_INBOUND_ID = config("XUI_DEFAULT_INBOUND_ID", default="")
 XUI_SUBSCRIPTION_BASE_URL = config("XUI_SUBSCRIPTION_BASE_URL", default="")
 XUI_API_BASE_PATH = config("XUI_API_BASE_PATH", "/panel/api/inbounds")
+XUI_API_TOKEN = config("XUI_API_TOKEN", default="")
 
 ANTHROPIC_API_KEY = config("ANTHROPIC_API_KEY", "")  # اختیاری، فقط برای بررسی AI فیش

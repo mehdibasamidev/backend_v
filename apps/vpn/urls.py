@@ -6,6 +6,7 @@ from apps.vpn.views.payments import PaymentProofUploadView
 from apps.vpn.views.dashboard import UserVpnSubscriptionListView
 from apps.vpn.views.admin_actions import ReviewPaymentProofView
 from apps.vpn.views.payment_info import PaymentInfoView
+from apps.vpn.views.subscription_configs import SubscriptionConfigsView
 
 urlpatterns = [
     path("vpn/payment-info/", PaymentInfoView.as_view(), name="vpn-payment-info"),
@@ -20,6 +21,11 @@ urlpatterns = [
         "vpn/subscriptions/<uuid:subscription_id>/payment-proof/",
         PaymentProofUploadView.as_view(),
         name="vpn-payment-proof-upload",
+    ),
+    path(
+        "vpn/subscriptions/<uuid:subscription_id>/configs/",
+        SubscriptionConfigsView.as_view(),
+        name="vpn-subscription-configs",
     ),
     path("vpn/subscriptions/", UserVpnSubscriptionListView.as_view(), name="vpn-subscription-list"),
 

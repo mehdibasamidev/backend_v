@@ -40,7 +40,7 @@ class UserVpnSubscriptionAdmin(admin.ModelAdmin):
     list_filter = ("status", "source")
     search_fields = ("user__email", "label", "xui_client_email")
     readonly_fields = (
-        "xui_inbound_id", "xui_client_uuid", "xui_client_email",
+        "xui_client_uuid", "xui_client_subid", "xui_client_email", "xui_inbound_ids",
         "subscription_link", "used_traffic_bytes", "last_synced_at",
         "started_at", "expires_at",
     )

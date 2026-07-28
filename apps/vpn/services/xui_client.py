@@ -1,6 +1,3 @@
-import json
-import uuid
-
 import requests
 from django.conf import settings
 
@@ -13,99 +10,86 @@ class XuiApiException(AppException):
 
 class ThreeXUiClient:
     """
-    Thin wrapper around the 3x-ui (MHSanaei) panel REST API.
+    Thin wrapper around the 3x-ui (MHSanaei) panel REST API v3.5+.
 
-    IMPORTANT: the base path for these endpoints has changed between panel
-    versions - some builds expose them under /panel/api/inbounds/...,
-    others under /panel/inbound/.... Check your installed panel version
-    (or /panel/api-docs if your build has it) and set XUI_API_BASE_PATH in
-    settings/.env accordingly before relying on this in production.
+    Auth is a static Bearer API token (Settings -> Security -> API Token
+    on the panel) - no login/session/cookie handling needed, every
+    request just carries the Authorization header.
     """
 
-    def __init__(self, base_url=None, username=None, password=None, api_base_path=None):
-        self.base_url = (base_url or settings.XUI_PANEL_URL).rstrip("/")
-        self.username = username or settings.XUI_USERNAME
-        self.password = password or settings.XUI_PASSWORD
-        self.api_base_path = api_base_path or getattr(settings, "XUI_API_BASE_PATH", "/panel/api/inbounds")
+    def __init__(self, base_url=None, api_token=None):
+        # Must include any custom path prefix the panel is mounted under,
+        # e.g. "https://epanel.example.com:2087/bmehdib" (NOT just the host).
+        self.base_url = (base_url or settings.XUI_PANEL_BASE_URL).rstrip("/")
+        self.api_token = api_token or settings.XUI_API_TOKEN
         self.session = requests.Session()
-        self._logged_in = False
+        self.session.headers.update({
+            "Authorization": f"Bearer {self.api_token}",
+            "Accept": "application/json",
+        })
 
     def _url(self, path):
         return f"{self.base_url}{path}"
 
-    def login(self):
-        response = self.session.post(
-            self._url("/login"),
-            data={"username": self.username, "password": self.password},
-            timeout=15,
-        )
-        response.raise_for_status()
-        payload = response.json()
-        if not payload.get("success"):
-            raise XuiApiException(f"3x-ui login failed: {payload.get('msg')}")
-        self._logged_in = True
-
-    def _ensure_login(self):
-        if not self._logged_in:
-            self.login()
-
     def _request(self, method, path, **kwargs):
-        self._ensure_login()
         response = self.session.request(method, self._url(path), timeout=15, **kwargs)
-        if response.status_code == 401:
-            # session cookie expired - re-login once and retry
-            self.login()
-            response = self.session.request(method, self._url(path), timeout=15, **kwargs)
         response.raise_for_status()
         payload = response.json()
         if not payload.get("success", True):
-            raise XuiApiException(payload.get("msg", "Unknown 3x-ui error"))
+            raise XuiApiException(payload.get("msg") or "Unknown 3x-ui error")
         return payload
 
-    def add_client(self, inbound_id, email, total_gb, expiry_time_ms, limit_ip=0, flow=""):
-        client_uuid = str(uuid.uuid4())
-        settings_payload = {
-            "clients": [
-                {
-                    "id": client_uuid,
-                    "email": email,
-                    "limitIp": limit_ip,
-                    "totalGB": total_gb,
-                    "expiryTime": expiry_time_ms,
-                    "enable": True,
-                    "flow": flow,
-                }
-            ]
+    def add_client(self, email, total_gb, expiry_time_ms, inbound_ids, limit_ip=0, tg_id=0):
+        """
+        Creates the client and attaches it to every inbound in inbound_ids
+        in one call. uuid/subId are generated server-side when omitted -
+        fetch them afterwards with get_client().
+        """
+        payload = {
+            "client": {
+                "email": email,
+                "totalGB": total_gb,
+                "expiryTime": expiry_time_ms,
+                "tgId": tg_id,
+                "limitIp": limit_ip,
+                "enable": True,
+            },
+            "inboundIds": inbound_ids,
         }
-        self._request(
-            "POST",
-            f"{self.api_base_path}/addClient",
-            json={"id": inbound_id, "settings": json.dumps(settings_payload)},
-        )
-        return client_uuid
+        return self._request("POST", "/panel/api/clients/add", json=payload)
 
-    def update_client(self, client_uuid, inbound_id, email, total_gb, expiry_time_ms, limit_ip=0, enable=True):
-        settings_payload = {
-            "clients": [
-                {
-                    "id": client_uuid,
-                    "email": email,
-                    "limitIp": limit_ip,
-                    "totalGB": total_gb,
-                    "expiryTime": expiry_time_ms,
-                    "enable": enable,
-                }
-            ]
-        }
-        return self._request(
-            "POST",
-            f"{self.api_base_path}/updateClient/{client_uuid}",
-            json={"id": inbound_id, "settings": json.dumps(settings_payload)},
-        )
+    def get_client(self, email):
+        """Returns {client, externalLinks, inboundIds, usedTraffic}."""
+        payload = self._request("GET", f"/panel/api/clients/get/{email}")
+        return payload.get("obj") or {}
 
-    def delete_client(self, inbound_id, client_uuid):
-        return self._request("POST", f"{self.api_base_path}/{inbound_id}/delClient/{client_uuid}")
+    def bulk_adjust(self, emails, add_days=0, add_bytes=0, flow=None):
+        """
+        Shifts expiry/quota for one or more clients (values may be
+        negative). Clients with unlimited expiry (expiryTime=0) or
+        unlimited traffic (totalGB=0) are skipped for that field by the
+        panel itself - matches our own volume_gb/duration "0 = unlimited"
+        convention.
+        """
+        payload = {"emails": emails, "addDays": add_days, "addBytes": add_bytes}
+        if flow is not None:
+            payload["flow"] = flow
+        return self._request("POST", "/panel/api/clients/bulkAdjust", json=payload)
 
-    def get_client_traffic(self, email):
-        payload = self._request("GET", f"{self.api_base_path}/getClientTraffics/{email}")
-        return payload.get("obj")
+    def get_traffic(self, email):
+        payload = self._request("GET", f"/panel/api/clients/traffic/{email}")
+        return payload.get("obj") or {}
+
+    def get_links(self, email):
+        """List of per-location config strings (vless://, vmess://, ...)."""
+        payload = self._request("GET", f"/panel/api/clients/links/{email}")
+        return payload.get("obj") or []
+
+    def delete_client(self, email):
+        return self._request("POST", f"/panel/api/clients/del/{email}")
+
+    def bulk_enable(self, emails):
+        return self._request("POST", "/panel/api/clients/bulkEnable", json={"emails": emails})
+
+    def bulk_disable(self, emails):
+        return self._request("POST", "/panel/api/clients/bulkDisable", json={"emails": emails})
