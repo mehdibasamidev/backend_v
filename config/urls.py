@@ -1,4 +1,5 @@
-import os
+# import os
+from decouple import config
 from django.contrib import admin
 from django.urls import path, include, re_path
 from drf_yasg.views import get_schema_view
@@ -13,7 +14,7 @@ schema_view = get_schema_view(
         contact=openapi.Contact(email="mehdibasami.tech@gmail.com"),
         license=openapi.License(name="MIT License"),
     ),
-    url=os.environ.get("SWAGGER_API_URL", "http://localhost:8000") + "/api/v1/",
+    url=config("SWAGGER_API_URL", default="http://localhost:8000") + "/api/v1/",
     public=True,
     permission_classes=(permissions.AllowAny,),
 )
