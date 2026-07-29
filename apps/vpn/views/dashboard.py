@@ -4,7 +4,7 @@ from rest_framework.renderers import JSONRenderer
 from drf_yasg.utils import swagger_auto_schema
 
 from apps.vpn.models import UserVpnSubscription
-from apps.vpn.serializers.subscriptions import UserVpnSubscriptionSerializer
+from apps.vpn.serializers import UserVpnSubscriptionSerializer
 from config.utils.custom_serializers import create_response_serializer
 from config.utils.pagination import StandardResultsSetPagination
 
@@ -26,9 +26,18 @@ class UserVpnSubscriptionListView(APIView):
         )},
     )
     def get(self, request):
-        subscriptions = UserVpnSubscription.objects.filter(
-            user=request.user
-        ).select_related("plan", "payment_proof").order_by("-created_at")
+        # payment_proofs is a reverse FK (a subscription accumulates one
+        # proof per purchase/renewal), so it needs prefetch_related -
+        # select_related only works for forward FK/OneToOne. The serializer
+        # reads it twice per row (latest_payment_proof + has_pending_payment),
+        # so without the prefetch this is an N+1.
+        subscriptions = (
+            UserVpnSubscription.objects
+            .filter(user=request.user)
+            .select_related("plan")
+            .prefetch_related("payment_proofs")
+            .order_by("-created_at")
+        )
 
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(subscriptions, request, view=self)
