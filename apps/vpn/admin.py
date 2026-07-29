@@ -1,13 +1,11 @@
 from django.contrib import admin
-from django.utils import timezone
-
 from apps.vpn.models import (
     VpnPlan,
     VpnPricingConfig,
     UserVpnSubscription,
     PaymentProof,
 )
-from apps.vpn.services.provisioning import activate_subscription, reject_subscription
+from apps.vpn.services.review import approve_payment_proof, reject_payment_proof
 
 
 @admin.register(VpnPlan)
@@ -28,6 +26,7 @@ class PaymentProofInline(admin.StackedInline):
     model = PaymentProof
     extra = 0
     readonly_fields = ("created_at", "ai_checked", "ai_verdict", "ai_notes")
+    ordering = ("-created_at",)
 
 
 @admin.register(UserVpnSubscription)
@@ -59,31 +58,23 @@ class UserVpnSubscriptionAdmin(admin.ModelAdmin):
 
 @admin.register(PaymentProof)
 class PaymentProofAdmin(admin.ModelAdmin):
-    list_display = ("subscription", "is_approved", "ai_verdict", "reviewed_by", "reviewed_at", "created_at")
-    list_filter = ("is_approved", "ai_verdict")
+    list_display = ("subscription", "kind", "amount", "is_approved", "ai_verdict", "reviewed_by", "reviewed_at", "created_at")
+    list_filter = ("is_approved", "kind", "ai_verdict")
     readonly_fields = ("ai_checked", "ai_verdict", "ai_notes", "created_at")
     actions = ["approve_selected", "reject_selected"]
 
     def approve_selected(self, request, queryset):
         count = 0
         for proof in queryset.filter(is_approved__isnull=True):
-            proof.is_approved = True
-            proof.reviewed_by = request.user
-            proof.reviewed_at = timezone.now()
-            proof.save(update_fields=["is_approved", "reviewed_by", "reviewed_at"])
-            activate_subscription(proof.subscription)
+            approve_payment_proof(proof, reviewed_by=request.user)
             count += 1
-        self.message_user(request, f"{count} payment(s) approved and activated on the VPN panel.")
-    approve_selected.short_description = "Approve selected payments & activate VPN"
+        self.message_user(request, f"{count} payment(s) approved and applied on the VPN panel.")
+    approve_selected.short_description = "Approve selected payments & apply on panel"
 
     def reject_selected(self, request, queryset):
         count = 0
         for proof in queryset.filter(is_approved__isnull=True):
-            proof.is_approved = False
-            proof.reviewed_by = request.user
-            proof.reviewed_at = timezone.now()
-            proof.save(update_fields=["is_approved", "reviewed_by", "reviewed_at"])
-            reject_subscription(proof.subscription)
+            reject_payment_proof(proof, reviewed_by=request.user)
             count += 1
         self.message_user(request, f"{count} payment(s) rejected.")
     reject_selected.short_description = "Reject selected payments"

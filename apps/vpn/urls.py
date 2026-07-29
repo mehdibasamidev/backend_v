@@ -1,8 +1,7 @@
 from django.urls import path
 
 from apps.vpn.views.plans import VpnPlanListView, CustomPlanOptionsView, CustomPlanQuoteView
-from apps.vpn.views.purchase import PurchaseFixedPlanView, PurchaseCustomPlanView
-from apps.vpn.views.payments import PaymentProofUploadView
+from apps.vpn.services.checkout import CheckoutView, RenewSubscriptionView
 from apps.vpn.views.dashboard import UserVpnSubscriptionListView
 from apps.vpn.views.admin_actions import ReviewPaymentProofView
 from apps.vpn.views.payment_info import PaymentInfoView
@@ -14,13 +13,15 @@ urlpatterns = [
     path("vpn/plans/custom/options/", CustomPlanOptionsView.as_view(), name="vpn-custom-plan-options"),
     path("vpn/plans/custom/quote/", CustomPlanQuoteView.as_view(), name="vpn-custom-plan-quote"),
 
-    path("vpn/purchase/fixed/", PurchaseFixedPlanView.as_view(), name="vpn-purchase-fixed"),
-    path("vpn/purchase/custom/", PurchaseCustomPlanView.as_view(), name="vpn-purchase-custom"),
+    # Single atomic step: pick a plan AND submit the receipt. There is
+    # deliberately no "create order first, pay later" endpoint - that only
+    # produced orphan pending records for people who browsed and left.
+    path("vpn/checkout/", CheckoutView.as_view(), name="vpn-checkout"),
 
     path(
-        "vpn/subscriptions/<uuid:subscription_id>/payment-proof/",
-        PaymentProofUploadView.as_view(),
-        name="vpn-payment-proof-upload",
+        "vpn/subscriptions/<uuid:subscription_id>/renew/",
+        RenewSubscriptionView.as_view(),
+        name="vpn-subscription-renew",
     ),
     path(
         "vpn/subscriptions/<uuid:subscription_id>/configs/",

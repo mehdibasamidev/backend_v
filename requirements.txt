@@ -6,16 +6,16 @@ django-timezone-field~=5.1
 
 # REST Framework and API
 djangorestframework~=3.14
-djangorestframework-jsonapi~=6.1
 djangorestframework-simplejwt~=5.3
 drf-yasg~=1.21
 
-# Storage and Media Handling
+# Storage and Media
+# MinIO is S3-compatible, so django-storages + boto3 is all that's needed -
+# settings.py uses storages.backends.s3boto3.S3Boto3Storage.
 Pillow~=10.0
 django-storages~=1.14
-django-minio-storage~=0.5  # Only use one: pick this OR django-minio-backend
-django-minio-backend~=3.5  # Redundant with above (choose one)
-minio~=7.1
+boto3~=1.43
+whitenoise~=6.7
 
 # PostgreSQL
 psycopg2-binary~=2.9
@@ -23,37 +23,41 @@ psycopg2-binary~=2.9
 # CORS and Environment Management
 django-cors-headers~=4.2
 python-decouple~=3.8
-python-dotenv~=1.0  # Only needed if you're manually loading .env, otherwise decouple is enough
 
-# Async/Websockets
+# ASGI stack
+# Required by BOTH the chat websockets and the Telegram webhook - the app
+# must be served as config.asgi:application, never config.wsgi.
 channels~=4.0
 channels-redis~=4.1
 daphne~=4.0
+uvicorn[standard]~=0.46
+# Since uvicorn 0.30 the bundled uvicorn.workers module is deprecated in
+# favour of this standalone package (gunicorn -k uvicorn_worker.UvicornWorker).
+uvicorn-worker~=0.4
+gunicorn~=25.3
+
+# Telegram bot
+# NOTE: the import name is `telegram`, but the PyPI package is
+# `python-telegram-bot`. The unrelated `telegram` package on PyPI does NOT
+# provide telegram.ext and will break the bot at import time.
+python-telegram-bot~=22.8
+
+# AI receipt review (optional - no-ops when ANTHROPIC_API_KEY is unset)
+anthropic~=0.116.0
 
 # Misc
 requests~=2.31
-tqdm~=4.66
 google-auth~=2.25
 
-# translation
-# django-parler~=2.3
-# django-parler-rest~=2.0
-
-# Optional Fields
-# django-multiselectfield~=0.1
+# Payments
+# Legacy: the VPN flow is manual card-to-card, so this is only still needed
+# if the older Stripe-based payments app is in use.
+stripe~=12.2
 
 # Testing
 pytest~=8.3
 pytest-django~=4.6
 
-# Payments
-stripe~=12.2
-
-# gunicorn 
-gunicorn ~=25.3
-uvicorn[standard] ~=0.46
-anthropic ~=0.116.0
-
-# minio
-boto3~=1.43
-whitenoise
+# Translation (uncomment if you enable django-parler)
+# django-parler~=2.3
+# django-parler-rest~=2.0

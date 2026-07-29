@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     'apps.payments',
     "apps.chat.apps.ChatConfig",
     "apps.vpn",
+    "apps.bot"
 ]
 
 MIDDLEWARE = [

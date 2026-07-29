@@ -10,6 +10,7 @@ class UserVpnSubscriptionSerializer(serializers.ModelSerializer):
     is_unlimited_users = serializers.BooleanField(read_only=True)
     is_expired = serializers.BooleanField(read_only=True)
     payment_status = serializers.SerializerMethodField()
+    has_pending_payment = serializers.SerializerMethodField()
 
     class Meta:
         model = UserVpnSubscription
@@ -19,12 +20,12 @@ class UserVpnSubscriptionSerializer(serializers.ModelSerializer):
             "remaining_days", "remaining_volume_gb",
             "is_unlimited_volume", "is_unlimited_users", "is_expired",
             "subscription_link", "started_at", "expires_at",
-            "price", "payment_status", "created_at",
+            "price", "payment_status", "has_pending_payment", "created_at",
         ]
         read_only_fields = fields
 
     def get_payment_status(self, obj):
-        proof = getattr(obj, "payment_proof", None)
+        proof = obj.latest_payment_proof
         if not proof:
             return "not_submitted"
         if proof.is_approved is True:
@@ -32,3 +33,6 @@ class UserVpnSubscriptionSerializer(serializers.ModelSerializer):
         if proof.is_approved is False:
             return "rejected"
         return "pending_review"
+
+    def get_has_pending_payment(self, obj):
+        return obj.payment_proofs.filter(is_approved__isnull=True).exists()

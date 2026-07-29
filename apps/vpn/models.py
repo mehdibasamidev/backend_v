@@ -12,7 +12,9 @@ class PlanSourceChoices(models.TextChoices):
 
 
 class SubscriptionStatusChoices(models.TextChoices):
-    PENDING_PAYMENT = "pending_payment", "Pending Payment"
+    # Orders are only ever created once a receipt has been submitted, so
+    # PENDING_APPROVAL is the entry state - there is no "created but
+    # unpaid" phase any more.
     PENDING_APPROVAL = "pending_approval", "Pending Admin Approval"
     ACTIVE = "active", "Active"
     EXPIRED = "expired", "Expired"
@@ -136,7 +138,7 @@ class UserVpnSubscription(models.Model):
     status = models.CharField(
         max_length=20,
         choices=SubscriptionStatusChoices.choices,
-        default=SubscriptionStatusChoices.PENDING_PAYMENT,
+        default=SubscriptionStatusChoices.PENDING_APPROVAL,
     )
 
     # Usage bookkeeping (synced from the 3x-ui panel)
@@ -187,6 +189,11 @@ class UserVpnSubscription(models.Model):
         return max(round(remaining / (1024 ** 3), 2), 0)
 
     @property
+    def latest_payment_proof(self):
+        # PaymentProof.Meta.ordering is ["-created_at"], so first() is newest.
+        return self.payment_proofs.first()
+
+    @property
     def is_expired(self):
         if self.status == SubscriptionStatusChoices.EXPIRED:
             return True
@@ -209,16 +216,41 @@ def payment_proof_upload_to(instance, filename):
     return f"users/{user_id}/proofs/{sub_id}/{filename}"
 
 
+class PaymentProofKindChoices(models.TextChoices):
+    PURCHASE = "purchase", "Initial Purchase"
+    RENEWAL = "renewal", "Renewal / Top-up"
+
+
 class PaymentProof(models.Model):
     """
-    Manual card-to-card payment proof submitted by the user for a subscription.
+    Manual card-to-card payment proof submitted by the user.
+
+    A subscription can accumulate several of these over its lifetime: one
+    for the initial purchase, then one per renewal - hence ForeignKey
+    rather than OneToOne.
+
     Approval is always a human (admin) decision - the AI fields below are
     only an assistive opinion, never an auto-approval mechanism.
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    subscription = models.OneToOneField(
-        UserVpnSubscription, on_delete=models.CASCADE, related_name="payment_proof",
+    subscription = models.ForeignKey(
+        UserVpnSubscription, on_delete=models.CASCADE, related_name="payment_proofs",
     )
+    kind = models.CharField(
+        max_length=10,
+        choices=PaymentProofKindChoices.choices,
+        default=PaymentProofKindChoices.PURCHASE,
+    )
+    amount = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        help_text="Amount this specific payment covers (snapshot at submission time)",
+    )
+
+    # Only meaningful for kind=RENEWAL - what the approval should add on
+    # top of whatever the client currently has on the panel.
+    extra_days = models.PositiveIntegerField(default=0)
+    extra_gb = models.PositiveIntegerField(default=0)
+
     receipt_image = models.FileField(upload_to=payment_proof_upload_to, max_length=500, blank=True)
     receipt_text = models.TextField(blank=True, help_text="Transaction reference / free text note from the user")
 
@@ -240,4 +272,4 @@ class PaymentProof(models.Model):
         ordering = ["-created_at"]
 
     def __str__(self):
-        return f"Proof for {self.subscription_id} (approved={self.is_approved})"
+        return f"{self.kind} proof for {self.subscription_id} (approved={self.is_approved})"
