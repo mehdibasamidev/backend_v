@@ -10,7 +10,7 @@ from apps.vpn.models import (
     PaymentProof,
     PaymentProofKindChoices,
 )
-from apps.vpn.serializers import UserVpnSubscriptionSerializer
+from apps.vpn.serializers.subscriptions import UserVpnSubscriptionSerializer
 from apps.vpn.services.ai_receipt import analyze_payment_receipt
 from apps.vpn.services.checkout import create_paid_order
 from apps.vpn.services.pricing import calculate_custom_plan_price

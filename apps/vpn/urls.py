@@ -1,7 +1,7 @@
 from django.urls import path
 
 from apps.vpn.views.plans import VpnPlanListView, CustomPlanOptionsView, CustomPlanQuoteView
-from apps.vpn.services.checkout import CheckoutView, RenewSubscriptionView
+from apps.vpn.views.checkout import CheckoutView, RenewSubscriptionView
 from apps.vpn.views.dashboard import UserVpnSubscriptionListView
 from apps.vpn.views.admin_actions import ReviewPaymentProofView
 from apps.vpn.views.payment_info import PaymentInfoView

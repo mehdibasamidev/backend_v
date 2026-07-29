@@ -243,6 +243,8 @@ class PaymentProof(models.Model):
     )
     amount = models.DecimalField(
         max_digits=12, decimal_places=2,
+        null=True,
+        blank=True,
         help_text="Amount this specific payment covers (snapshot at submission time)",
     )
 
