@@ -125,6 +125,7 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
+    'EXCEPTION_HANDLER': 'config.utils.exception_handler.custom_exception_handler',
 }
 
 # SIMPLE JWT SETTINGS
@@ -234,3 +235,58 @@ XUI_API_BASE_PATH = config("XUI_API_BASE_PATH", "/panel/api/inbounds")
 XUI_API_TOKEN = config("XUI_API_TOKEN", default="")
 
 ANTHROPIC_API_KEY = config("ANTHROPIC_API_KEY", "")  # اختیاری، فقط برای بررسی AI فیش
+
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "[{asctime}] {levelname} {name}: {message}",
+            "style": "{",
+        },
+        "simple": {
+            "format": "{levelname} {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": "INFO",
+    },
+    "loggers": {
+        # 5xx tracebacks from Django itself. propagate=False so they
+        # aren't printed twice (once here, once via root).
+        "django.request": {
+            "handlers": ["console"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+        "django": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        # Set to DEBUG temporarily to see every SQL query - very noisy,
+        # never leave it on in production.
+        "django.db.backends": {
+            "handlers": ["console"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        # Our own code: the logger name used by
+        # config/utils/exception_handler.py, plus anything you add with
+        # logging.getLogger("apps.<something>").
+        "apps": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+    },
+}
