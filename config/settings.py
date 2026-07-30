@@ -227,16 +227,19 @@ PAYMENT_CARD_HOLDER = config("PAYMENT_CARD_HOLDER", default="N/V")
 
 # X-UI Panel Information
 XUI_PANEL_BASE_URL = config("XUI_PANEL_BASE_URL", default="http://localhost:8080")
-XUI_USERNAME = config("XUI_USERNAME", default="admin")
-XUI_PASSWORD = config("XUI_PASSWORD", default="admin")
-XUI_DEFAULT_INBOUND_ID = config("XUI_DEFAULT_INBOUND_ID", default="")
-
-XUI_SUBSCRIPTION_BASE_URL = config("XUI_SUBSCRIPTION_BASE_URL", default="")
-XUI_API_BASE_PATH = config("XUI_API_BASE_PATH", "/panel/api/inbounds")
 XUI_API_TOKEN = config("XUI_API_TOKEN", default="")
+XUI_DEFAULT_INBOUND_IDS = config("XUI_DEFAULT_INBOUND_ID", default="")
+XUI_SUBSCRIPTION_BASE_URL = config("XUI_SUBSCRIPTION_BASE_URL", default="")
 
-ANTHROPIC_API_KEY = config("ANTHROPIC_API_KEY", "")  # اختیاری، فقط برای بررسی AI فیش
 
+# --- Telegram bot ---
+TELEGRAM_BOT_TOKEN = config("TELEGRAM_BOT_TOKEN", default="")
+TELEGRAM_WEBHOOK_SECRET = config("TELEGRAM_WEBHOOK_SECRET", default="")        # random 32+ chars
+TELEGRAM_BASE_WEBHOOK_URL = config("TELEGRAM_BASE_WEBHOOK_URL", default="")    # https://api.yourdomain.com
+TELEGRAM_ADMIN_GROUP_CHAT_ID = config("TELEGRAM_ADMIN_GROUP_CHAT_ID", default="")
+
+# --- optional AI receipt pre-check (no-ops when unset) ---
+ANTHROPIC_API_KEY = config("ANTHROPIC_API_KEY", default="")  # اختیاری، فقط برای بررسی AI فیش
 
 LOGGING = {
     "version": 1,
