@@ -7,6 +7,11 @@ from apps.account.models import User
 class UserInfoSerializer(serializers.ModelSerializer):
     rate = serializers.FloatField(read_only=True)
 
+    # is_staff itself stays excluded (it's a Django internal), but the client
+    # still needs to know whether to surface the admin panel - so expose a
+    # single derived flag instead.
+    is_admin = serializers.SerializerMethodField()
+
     class Meta:
         model = User
         exclude = [
@@ -16,6 +21,9 @@ class UserInfoSerializer(serializers.ModelSerializer):
             "groups",
             "user_permissions",
         ]
+
+    def get_is_admin(self, obj):
+        return bool(obj.is_staff or obj.is_superuser)
 
 
 class UserProfileUpdateSerializer(serializers.ModelSerializer):
