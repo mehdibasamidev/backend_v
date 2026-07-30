@@ -90,5 +90,3 @@ local_settings.py
 .env.dev
 db.sqlite3
 django_env
-00*.py
-.env_p
