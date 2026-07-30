@@ -226,10 +226,11 @@ PAYMENT_CARD_NUMBER = config("PAYMENT_CARD_NUMBER", default="4242424242424242")
 PAYMENT_CARD_HOLDER = config("PAYMENT_CARD_HOLDER", default="N/V")
 
 # X-UI Panel Information
-XUI_PANEL_URL = config("XUI_PANEL_URL", default="http://localhost:8080")
+XUI_PANEL_BASE_URL = config("XUI_PANEL_BASE_URL", default="http://localhost:8080")
 XUI_USERNAME = config("XUI_USERNAME", default="admin")
 XUI_PASSWORD = config("XUI_PASSWORD", default="admin")
 XUI_DEFAULT_INBOUND_ID = config("XUI_DEFAULT_INBOUND_ID", default="")
+
 XUI_SUBSCRIPTION_BASE_URL = config("XUI_SUBSCRIPTION_BASE_URL", default="")
 XUI_API_BASE_PATH = config("XUI_API_BASE_PATH", "/panel/api/inbounds")
 XUI_API_TOKEN = config("XUI_API_TOKEN", default="")
