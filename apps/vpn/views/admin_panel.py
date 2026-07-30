@@ -252,7 +252,9 @@ class AdminPaymentProofListView(APIView):
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(proofs, request, view=self)
         return paginator.get_paginated_response(
-            AdminPaymentProofSerializer(page, many=True).data
+            AdminPaymentProofSerializer(
+                page, many=True, context={'request': request}
+            ).data
         )
 
 
