@@ -165,40 +165,30 @@ EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
 # DEFAULT AUTO FIELD
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# default file storage
-DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+# ---------- Storage ----------
+# Two buckets with different exposure:
+#   media   -> profile pictures, public, served straight from MinIO
+#   private -> payment receipts, no anonymous access; streamed by
+#              apps/vpn/views/receipt.py after a permission check
+DEFAULT_FILE_STORAGE = 'config.utils.storages.PublicMediaStorage'
 
-# minio settings
-AWS_ACCESS_KEY_ID = config("MINIO_ROOT_USER", default="minioadminme")
-AWS_SECRET_ACCESS_KEY = config("MINIO_ROOT_PASSWORD", default="minioadminme")
+AWS_ACCESS_KEY_ID = config("MINIO_ROOT_USER")
+AWS_SECRET_ACCESS_KEY = config("MINIO_ROOT_PASSWORD")
+
+# Internal address Django uses to reach MinIO inside the docker network
+AWS_S3_ENDPOINT_URL = config("MINIO_ENDPOINT", default="http://minio:9000")
+
 AWS_STORAGE_BUCKET_NAME = config("MINIO_BUCKET_NAME", default="media")
-AWS_S3_ENDPOINT_URL = config("MINIO_ENDPOINT", default="http://localhost:9000")
+AWS_PRIVATE_STORAGE_BUCKET_NAME = config("MINIO_PRIVATE_BUCKET_NAME", default="private")
+
+# MUST include the bucket - custom_domain replaces host AND bucket.
+AWS_S3_CUSTOM_DOMAIN = "minio.bodyremix.ir/media"
+AWS_S3_URL_PROTOCOL = "https:"
+
+AWS_S3_ADDRESSING_STYLE = "path"
 AWS_S3_FILE_OVERWRITE = False
 AWS_DEFAULT_ACL = None
-AWS_S3_ADDRESSING_STYLE = "path"
-
-# parler settings, uncomment if using Parler for translations
-# LANGUAGES = [
-#     ('en', 'English'),
-#     ('fa', 'Farsi'),
-#     ('es', 'Spanish'),
-#     ('fr', 'French'),
-#     ('de', 'German'),
-# ]
-
-# PARLER_LANGUAGES = {
-#     None: (
-#         {'code': 'en'},
-#         {'code': 'fa'},
-#         {'code': 'fr'},
-#     ),
-#     'default': {
-#         'fallback': 'en',
-#         'hide_untranslated': False,
-#     }
-# }
-# End of parler settings
-
+AWS_QUERYSTRING_AUTH = False
 
 # CUSTOM USER MODEL
 AUTH_USER_MODEL = 'account.User'
@@ -228,7 +218,7 @@ PAYMENT_CARD_HOLDER = config("PAYMENT_CARD_HOLDER", default="N/V")
 # X-UI Panel Information
 XUI_PANEL_BASE_URL = config("XUI_PANEL_BASE_URL", default="http://localhost:8080")
 XUI_API_TOKEN = config("XUI_API_TOKEN", default="")
-XUI_DEFAULT_INBOUND_IDS = config("XUI_DEFAULT_INBOUND_ID", default="")
+XUI_DEFAULT_INBOUND_IDS = config("XUI_DEFAULT_INBOUND_IDS", default="")
 XUI_SUBSCRIPTION_BASE_URL = config("XUI_SUBSCRIPTION_BASE_URL", default="")
 
 

@@ -120,12 +120,12 @@ class AdminPaymentProofSerializer(serializers.ModelSerializer):
     def get_receipt_image_url(self, obj):
         if not obj.receipt_image:
             return None
-        try:
-            return obj.receipt_image.url
-        except Exception:
-            # Storage backend may be misconfigured or the object missing -
-            # an admin list shouldn't 500 over one broken image.
-            return None
+        # Deliberately NOT obj.receipt_image.url - that would be a direct
+        # MinIO link. Receipts go through PaymentReceiptView so access is
+        # checked per request; the client must send its auth header.
+        request = self.context.get("request")
+        path = f"/api/v1/vpn/payment-proofs/{obj.id}/receipt/"
+        return request.build_absolute_uri(path) if request else path
 
     def get_plan_summary(self, obj):
         sub = obj.subscription

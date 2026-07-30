@@ -15,7 +15,7 @@ class User(AbstractUser):
     last_seen = models.DateTimeField(null=True, blank=True)
     phone_number = models.CharField(max_length=20, blank=True)
     full_name = models.CharField(max_length=255, blank=True)
-    profile_picture = models.FileField(upload_to=custom_user_img_upload_to, blank=True)
+    profile_picture = models.FileField(upload_to=custom_user_img_upload_to, blank=True,)
     biography = models.TextField(blank=True)
     google_id = models.CharField(max_length=255, null=True, blank=True, unique=True)
 

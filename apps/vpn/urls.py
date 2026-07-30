@@ -14,6 +14,7 @@ from apps.vpn.views.admin_panel import (
     AdminSubscriptionActionView,
 )
 from apps.vpn.views.payment_info import PaymentInfoView
+from apps.vpn.views.receipt import PaymentReceiptView
 from apps.vpn.views.subscription_configs import SubscriptionConfigsView
 
 urlpatterns = [
@@ -39,6 +40,14 @@ urlpatterns = [
         name="vpn-subscription-configs",
     ),
     path("vpn/subscriptions/", UserVpnSubscriptionListView.as_view(), name="vpn-subscription-list"),
+
+    # Streams the receipt after checking the caller owns it or is staff.
+    # The storage bucket itself stays private.
+    path(
+        "vpn/payment-proofs/<uuid:payment_proof_id>/receipt/",
+        PaymentReceiptView.as_view(),
+        name="vpn-payment-receipt",
+    ),
 
     # ---------- Admin ----------
     path("vpn/admin/counts/", AdminPendingCountView.as_view(), name="vpn-admin-counts"),

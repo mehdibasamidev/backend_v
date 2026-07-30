@@ -5,6 +5,8 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
+from config.utils.storages import PrivateMediaStorage
+
 
 class PlanSourceChoices(models.TextChoices):
     FIXED = "fixed", "Fixed Plan"
@@ -243,8 +245,6 @@ class PaymentProof(models.Model):
     )
     amount = models.DecimalField(
         max_digits=12, decimal_places=2,
-        null=True,
-        blank=True,
         help_text="Amount this specific payment covers (snapshot at submission time)",
     )
 
@@ -253,7 +253,14 @@ class PaymentProof(models.Model):
     extra_days = models.PositiveIntegerField(default=0)
     extra_gb = models.PositiveIntegerField(default=0)
 
-    receipt_image = models.FileField(upload_to=payment_proof_upload_to, max_length=500, blank=True)
+    # Private bucket: these are bank documents, served only through
+    # PaymentReceiptView after a permission check - never a direct URL.
+    receipt_image = models.FileField(
+        upload_to=payment_proof_upload_to,
+        max_length=500,
+        storage=PrivateMediaStorage(),
+        blank=True,
+    )
     receipt_text = models.TextField(blank=True, help_text="Transaction reference / free text note from the user")
 
     ai_checked = models.BooleanField(default=False)
