@@ -1,6 +1,7 @@
 import mimetypes
 
 from django.http import FileResponse, Http404
+from django.utils.http import content_disposition_header
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 
@@ -45,8 +46,12 @@ class PaymentReceiptView(APIView):
         # no reason to hold them in memory.
         file_handle = proof.receipt_image.open("rb")
         response = FileResponse(file_handle, content_type=content_type)
-        response["Content-Disposition"] = (
-            f'inline; filename="{proof.receipt_image.name.split("/")[-1]}"'
+        # Filenames come from the uploader's device, so they can contain
+        # quotes or non-ASCII. Django's helper emits the RFC 5987 form when
+        # needed instead of producing a malformed header.
+        raw_name = proof.receipt_image.name.split("/")[-1]
+        response["Content-Disposition"] = content_disposition_header(
+            as_attachment=False, filename=raw_name
         )
         # Private by definition - keep it out of shared caches.
         response["Cache-Control"] = "private, max-age=300"
