@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 
 from django.conf import settings
 from django.utils import timezone
@@ -103,26 +103,78 @@ def get_client_configs(subscription):
     return client.get_links(subscription.xui_client_email)
 
 
+def fetch_client_traffic(client_email, client=None):
+    """
+    Pure network call - no ORM. Split out from the apply step so several
+    clients can be fetched in parallel threads without dragging Django
+    database connections into those threads.
+    """
+    client = client or ThreeXUiClient()
+    return client.get_traffic(client_email)
+
+
+def apply_traffic_to_subscription(subscription, traffic):
+    """
+    Reconciles a panel payload onto a subscription and saves it.
+
+    The 3x-ui panel is the source of truth: an admin can change a client's
+    quota or expiry directly there, and traffic obviously only exists there.
+    So this copies usage AND the current limits back, rather than trusting
+    whatever was snapshotted at purchase time.
+
+    Must run on the main thread (it writes to the DB).
+    """
+    if not traffic:
+        return subscription
+
+    updated_fields = ["used_traffic_bytes", "last_synced_at", "status", "updated_at"]
+
+    subscription.used_traffic_bytes = (traffic.get("up") or 0) + (traffic.get("down") or 0)
+    subscription.last_synced_at = timezone.now()
+
+    # --- quota (bytes; 0 means unlimited, same convention as ours) ---
+    total_bytes = traffic.get("total")
+    if total_bytes is not None:
+        panel_volume_gb = 0 if total_bytes == 0 else total_bytes // (1024 ** 3)
+        if panel_volume_gb != subscription.volume_gb:
+            subscription.volume_gb = panel_volume_gb
+            updated_fields.append("volume_gb")
+
+    # --- expiry (unix ms; 0 means never expires) ---
+    expiry_ms = traffic.get("expiryTime")
+    if expiry_ms is not None:
+        panel_expires_at = (
+            None
+            if expiry_ms == 0
+            else datetime.fromtimestamp(expiry_ms / 1000, tz=dt_timezone.utc)
+        )
+        if panel_expires_at != subscription.expires_at:
+            subscription.expires_at = panel_expires_at
+            updated_fields.append("expires_at")
+
+    # --- derive status from the freshly synced numbers ---
+    if subscription.expires_at and timezone.now() > subscription.expires_at:
+        subscription.status = SubscriptionStatusChoices.EXPIRED
+    elif not subscription.is_unlimited_volume and subscription.remaining_volume_gb <= 0:
+        subscription.status = SubscriptionStatusChoices.EXPIRED
+    elif (
+        subscription.status == SubscriptionStatusChoices.EXPIRED
+        and traffic.get("enable", True)
+    ):
+        # An admin topped the client up on the panel - bring it back.
+        subscription.status = SubscriptionStatusChoices.ACTIVE
+
+    subscription.save(update_fields=updated_fields)
+    return subscription
+
+
 def sync_subscription_usage(subscription):
     """
-    Pulls current traffic usage from the panel and updates local
-    bookkeeping. Intended to be called periodically (management command /
-    cron / celery beat) for all ACTIVE subscriptions.
+    Fetch + apply for a single subscription. Safe to call on any
+    subscription - unprovisioned ones are skipped.
     """
     if not subscription.xui_client_email:
         return subscription
 
-    client = ThreeXUiClient()
-    traffic = client.get_traffic(subscription.xui_client_email)
-    if traffic:
-        used = (traffic.get("up", 0) or 0) + (traffic.get("down", 0) or 0)
-        subscription.used_traffic_bytes = used
-        subscription.last_synced_at = timezone.now()
-
-        if subscription.expires_at and timezone.now() > subscription.expires_at:
-            subscription.status = SubscriptionStatusChoices.EXPIRED
-        elif not subscription.is_unlimited_volume and subscription.remaining_volume_gb <= 0:
-            subscription.status = SubscriptionStatusChoices.EXPIRED
-
-        subscription.save(update_fields=["used_traffic_bytes", "last_synced_at", "status", "updated_at"])
-    return subscription
+    traffic = fetch_client_traffic(subscription.xui_client_email)
+    return apply_traffic_to_subscription(subscription, traffic)

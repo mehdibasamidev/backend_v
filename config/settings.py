@@ -217,6 +217,12 @@ XUI_API_TOKEN = config("XUI_API_TOKEN", default="")
 XUI_DEFAULT_INBOUND_IDS = config("XUI_DEFAULT_INBOUND_IDS", default="")
 XUI_SUBSCRIPTION_BASE_URL = config("XUI_SUBSCRIPTION_BASE_URL", default="")
 
+# ---------- Lazy sync ----------
+# Refresh the dashboard straight from the 3x-ui panel on read, but only when
+# the local copy is older than this. Higher = less panel load, staler data.
+VPN_LAZY_SYNC_ENABLED = config("VPN_LAZY_SYNC_ENABLED", default=True, cast=bool)
+VPN_LAZY_SYNC_MAX_AGE_SECONDS = config("VPN_LAZY_SYNC_MAX_AGE_SECONDS", default=60, cast=int)
+VPN_LAZY_SYNC_WORKERS = config("VPN_LAZY_SYNC_WORKERS", default=5, cast=int)
 
 # --- Telegram bot ---
 TELEGRAM_BOT_TOKEN = config("TELEGRAM_BOT_TOKEN", default="")

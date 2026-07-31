@@ -4,7 +4,8 @@ from rest_framework.renderers import JSONRenderer
 from drf_yasg.utils import swagger_auto_schema
 
 from apps.vpn.models import UserVpnSubscription
-from apps.vpn.serializers.subscriptions import UserVpnSubscriptionSerializer
+from apps.vpn.serializers import UserVpnSubscriptionSerializer
+from apps.vpn.services.lazy_sync import lazy_sync
 from config.utils.custom_serializers import create_response_serializer
 from config.utils.pagination import StandardResultsSetPagination
 
@@ -41,5 +42,11 @@ class UserVpnSubscriptionListView(APIView):
 
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(subscriptions, request, view=self)
+
+        # Refresh this page from the panel before serializing, so the user
+        # sees live traffic rather than whatever the last cron run stored.
+        # Throttled and failure-tolerant - see services/lazy_sync.py.
+        lazy_sync(page)
+
         serializer = UserVpnSubscriptionSerializer(page, many=True)
         return paginator.get_paginated_response(serializer.data)
