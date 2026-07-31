@@ -4,7 +4,7 @@ from rest_framework.renderers import JSONRenderer
 from drf_yasg.utils import swagger_auto_schema
 
 from apps.vpn.models import UserVpnSubscription
-from apps.vpn.serializers import UserVpnSubscriptionSerializer
+from apps.vpn.serializers.subscriptions import UserVpnSubscriptionSerializer
 from apps.vpn.services.lazy_sync import lazy_sync
 from config.utils.custom_serializers import create_response_serializer
 from config.utils.pagination import StandardResultsSetPagination
