@@ -1,10 +1,23 @@
+import logging
+import re
+import secrets
+import string
 from datetime import datetime, timedelta, timezone as dt_timezone
 
 from django.conf import settings
 from django.utils import timezone
 
-from apps.vpn.models import SubscriptionStatusChoices
+from apps.vpn.models import SubscriptionStatusChoices, UserVpnSubscription
 from apps.vpn.services.xui_client import ThreeXUiClient
+from config.utils.exceptions import AppException
+
+logger = logging.getLogger("apps")
+
+# Lowercase letters + digits only. Panel client emails end up inside share
+# links and QR codes, so anything ambiguous or non-ASCII is avoided.
+_SUFFIX_ALPHABET = string.ascii_lowercase + string.digits
+_SUFFIX_LENGTH = 4
+_MAX_EMAIL_ATTEMPTS = 12
 
 
 def _default_inbound_ids():
@@ -17,6 +30,64 @@ def _build_subscription_link(sub_id):
     if not base or not sub_id:
         return ""
     return f"{base}/{sub_id}"
+
+
+def _base_name_for(user):
+    """
+    Prefers the username; falls back to the email local part, then to a
+    literal so bot-registered users (who have no username) still get
+    something readable.
+    """
+    candidate = (user.username or "").strip()
+    if not candidate:
+        candidate = (user.email or "").split("@")[0]
+
+    # 3x-ui shows this label everywhere - keep it ASCII and predictable.
+    candidate = re.sub(r"[^a-z0-9]", "", candidate.lower())
+    return candidate[:20] or "user"
+
+
+def generate_xui_client_email(user, panel_client=None):
+    """
+    Builds a panel client label like "mehdi-ud4r".
+
+    The random suffix exists because one person can hold several services
+    at once, so the username alone is not unique. On a collision a fresh
+    suffix is drawn rather than failing - only an exhausted retry budget
+    raises, which in practice means the panel is returning something
+    unexpected rather than that we genuinely ran out of names.
+
+    Checks our own table first (cheap) and then the panel (authoritative -
+    an admin may have created a client by hand). A panel lookup failure is
+    not treated as a collision; the unique constraint still protects us.
+    """
+    base = _base_name_for(user)
+
+    for _ in range(_MAX_EMAIL_ATTEMPTS):
+        suffix = "".join(secrets.choice(_SUFFIX_ALPHABET) for _ in range(_SUFFIX_LENGTH))
+        candidate = f"{base}-{suffix}"
+
+        if UserVpnSubscription.objects.filter(xui_client_email=candidate).exists():
+            continue
+
+        if panel_client is not None:
+            try:
+                existing = panel_client.get_client(candidate)
+                if existing and existing.get("client"):
+                    continue
+            except Exception as exc:
+                # A 404 here is the normal "not found" case for most panel
+                # builds; anything else we log and accept, since the DB
+                # constraint is the real guard.
+                logger.debug("Panel lookup for %s failed: %s", candidate, exc)
+
+        return candidate
+
+    raise AppException(
+        f"Could not generate a free client name for '{base}' after "
+        f"{_MAX_EMAIL_ATTEMPTS} attempts. Please retry, or set the client "
+        f"name manually on the panel."
+    )
 
 
 def activate_subscription(subscription):
@@ -37,8 +108,9 @@ def activate_subscription(subscription):
     total_gb_bytes = 0 if subscription.is_unlimited_volume else subscription.volume_gb * (1024 ** 3)
     limit_ip = 0 if subscription.is_unlimited_users else subscription.max_concurrent_users
 
-    client_email = subscription.xui_client_email or (
-        f"user{str(subscription.user_id).replace('-', '')[:8]}-{str(subscription.id).replace('-', '')[:8]}"
+    # Reuse the existing label on re-activation; otherwise mint one.
+    client_email = subscription.xui_client_email or generate_xui_client_email(
+        subscription.user, panel_client=client
     )
 
     client.add_client(
