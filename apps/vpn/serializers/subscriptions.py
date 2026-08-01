@@ -42,6 +42,7 @@ class UserVpnSubscriptionSerializer(serializers.ModelSerializer):
     has_pending_payment = serializers.SerializerMethodField()
     plan_name = serializers.CharField(source="plan.name", read_only=True, default=None)
     latest_proof = serializers.SerializerMethodField()
+    renewal = serializers.SerializerMethodField()
 
     class Meta:
         model = UserVpnSubscription
@@ -52,7 +53,7 @@ class UserVpnSubscriptionSerializer(serializers.ModelSerializer):
             "is_unlimited_volume", "is_unlimited_users", "is_expired",
             "subscription_link", "started_at", "expires_at",
             "price", "payment_status", "has_pending_payment",
-            "latest_proof", "created_at",
+            "latest_proof", "renewal", "created_at",
         ]
         read_only_fields = fields
 
@@ -68,6 +69,38 @@ class UserVpnSubscriptionSerializer(serializers.ModelSerializer):
 
     def get_has_pending_payment(self, obj):
         return obj.payment_proofs.filter(is_approved__isnull=True).exists()
+
+    def get_renewal(self, obj):
+        """
+        Tells the client how this particular service renews, so it doesn't
+        have to reimplement the rule.
+
+        mode="periods": bought from a still-active fixed plan, so it renews
+        in whole plan periods at the plan's CURRENT price - which is what
+        keeps an admin price change authoritative.
+
+        mode="custom": custom-built, or the original plan was retired. The
+        client picks days/GB and the server prices them at current unit
+        rates with no free-day allowance (that allowance is a
+        first-purchase thing; applying it to renewals made a 30-day top-up
+        cost nothing).
+        """
+        plan = obj.plan
+        if plan is not None and plan.is_active:
+            return {
+                "mode": "periods",
+                "period_days": plan.duration_days,
+                "period_volume_gb": 0 if plan.is_unlimited_volume else plan.volume_gb,
+                "period_price": str(plan.price),
+                "is_unlimited_volume": plan.is_unlimited_volume,
+            }
+        return {
+            "mode": "custom",
+            "period_days": obj.duration_days,
+            "period_volume_gb": 0 if obj.is_unlimited_volume else obj.volume_gb,
+            "period_price": None,
+            "is_unlimited_volume": obj.is_unlimited_volume,
+        }
 
     def get_latest_proof(self, obj):
         proof = obj.latest_payment_proof

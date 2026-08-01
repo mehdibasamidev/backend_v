@@ -13,7 +13,7 @@ from apps.vpn.models import (
 from apps.vpn.serializers.subscriptions import UserVpnSubscriptionSerializer
 from apps.vpn.services.ai_receipt import analyze_payment_receipt
 from apps.vpn.services.checkout import create_paid_order
-from apps.vpn.services.pricing import calculate_custom_plan_price
+from apps.vpn.services.pricing import resolve_renewal
 from config.utils.custom_serializers import create_response_serializer
 from config.utils.exceptions import AppException
 from config.utils.response import (
@@ -107,20 +107,46 @@ class CheckoutView(APIView):
             pass
 
         return SuccessResponse(
-            data=UserVpnSubscriptionSerializer(subscription).data,
+            data=UserVpnSubscriptionSerializer(
+                subscription, context={'request': request}
+            ).data,
             message="Order submitted. An admin will review your payment shortly.",
         )
 
 
 class RenewalSerializer(serializers.Serializer):
-    extra_days = serializers.IntegerField(min_value=0)
-    extra_gb = serializers.IntegerField(min_value=0)
+    """
+    Two shapes, depending on where the service came from:
+
+      * fixed plan  -> `periods`: how many whole plan periods to add.
+      * custom      -> `extra_days` / `extra_gb`.
+
+    The client doesn't have to guess which: the subscription serializer
+    exposes a `renewal.mode` field. Whatever arrives, the price is resolved
+    server-side by resolve_renewal().
+    """
+    periods = serializers.IntegerField(min_value=1, max_value=12, required=False)
+    extra_days = serializers.IntegerField(min_value=0, required=False)
+    extra_gb = serializers.IntegerField(min_value=0, required=False)
     receipt_image = serializers.FileField(required=False)
     receipt_text = serializers.CharField(required=False, allow_blank=True)
 
+    def __init__(self, *args, subscription=None, **kwargs):
+        self.subscription = subscription
+        super().__init__(*args, **kwargs)
+
+    def validate_extra_gb(self, value):
+        # An unlimited client has totalGB=0 on the panel, and bulkAdjust
+        # explicitly skips the traffic field for those - selling volume
+        # would take the money and change nothing.
+        if value and self.subscription and self.subscription.is_unlimited_volume:
+            raise serializers.ValidationError(
+                "This service already has unlimited data, so extra volume "
+                "cannot be added. Renew the duration instead."
+            )
+        return value
+
     def validate(self, attrs):
-        if attrs["extra_days"] == 0 and attrs["extra_gb"] == 0:
-            raise serializers.ValidationError("Add at least some days or volume.")
         if not attrs.get("receipt_image") and not attrs.get("receipt_text"):
             raise serializers.ValidationError(
                 "Provide at least a receipt image or a text reference (e.g. transaction id)."
@@ -130,9 +156,9 @@ class RenewalSerializer(serializers.Serializer):
 
 class RenewSubscriptionView(APIView):
     """
-    Tops up an existing subscription with more days and/or volume. Same
-    manual-payment flow as a purchase: submit the receipt here, an admin
-    approves, and only then is the panel client actually extended.
+    Tops up an existing subscription. Same manual-payment flow as a
+    purchase: submit the receipt here, an admin approves, and only then is
+    the panel client actually extended.
     """
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser]
@@ -141,7 +167,7 @@ class RenewSubscriptionView(APIView):
     @swagger_auto_schema(request_body=RenewalSerializer)
     def post(self, request, subscription_id):
         try:
-            subscription = UserVpnSubscription.objects.get(
+            subscription = UserVpnSubscription.objects.select_related("plan").get(
                 id=subscription_id, user=request.user,
             )
         except UserVpnSubscription.DoesNotExist:
@@ -157,28 +183,32 @@ class RenewSubscriptionView(APIView):
                 message="You already have a payment awaiting review for this subscription"
             )
 
-        serializer = RenewalSerializer(data=request.data)
+        serializer = RenewalSerializer(data=request.data, subscription=subscription)
         if not serializer.is_valid():
             return BadRequestResponse(errors=serializer.errors)
 
         data = serializer.validated_data
 
         try:
-            price = calculate_custom_plan_price(
-                volume_gb=data["extra_gb"],
-                duration_days=data["extra_days"],
-                max_concurrent_users=max(subscription.max_concurrent_users, 1),
+            extra_days, extra_gb, price = resolve_renewal(
+                subscription,
+                periods=data.get("periods"),
+                extra_days=data.get("extra_days"),
+                extra_gb=data.get("extra_gb"),
             )
         except AppException as e:
             return BadRequestResponse(message=e.message)
+
+        if extra_days <= 0 and extra_gb <= 0:
+            return BadRequestResponse(message="Add at least some days or volume.")
 
         try:
             proof = PaymentProof.objects.create(
                 subscription=subscription,
                 kind=PaymentProofKindChoices.RENEWAL,
                 amount=price,
-                extra_days=data["extra_days"],
-                extra_gb=data["extra_gb"],
+                extra_days=extra_days,
+                extra_gb=extra_gb,
                 receipt_image=data.get("receipt_image"),
                 receipt_text=data.get("receipt_text", ""),
             )
@@ -191,6 +221,10 @@ class RenewSubscriptionView(APIView):
             pass
 
         return SuccessResponse(
-            data={"amount": str(price)},
+            data={
+                "amount": str(price),
+                "extra_days": extra_days,
+                "extra_gb": extra_gb,
+            },
             message="Renewal submitted. An admin will review your payment shortly.",
         )
