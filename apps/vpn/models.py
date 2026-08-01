@@ -1,3 +1,4 @@
+import os
 import uuid
 from decimal import Decimal
 
@@ -156,6 +157,11 @@ class UserVpnSubscription(models.Model):
     xui_client_email = models.CharField(max_length=150, null=True, blank=True, unique=True)
     subscription_link = models.URLField(max_length=500, blank=True)
 
+    # Soft delete. The customer can clear finished services out of their
+    # list, but the row (and its payment proofs) stays for the admin -
+    # hard-deleting would cascade away the only record that they ever paid.
+    hidden_at = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -191,6 +197,25 @@ class UserVpnSubscription(models.Model):
         return max(round(remaining / (1024 ** 3), 2), 0)
 
     @property
+    def is_hidden(self):
+        return self.hidden_at is not None
+
+    @property
+    def can_be_hidden(self):
+        """
+        Only finished services may be cleared away.
+
+        An ACTIVE one is something they are still paying for, and a
+        PENDING_APPROVAL one has money in flight - letting either disappear
+        from the customer's own list would just generate support tickets.
+        """
+        return self.status in (
+            SubscriptionStatusChoices.EXPIRED,
+            SubscriptionStatusChoices.REJECTED,
+            SubscriptionStatusChoices.CANCELLED,
+        )
+
+    @property
     def latest_payment_proof(self):
         # PaymentProof.Meta.ordering is ["-created_at"], so first() is newest.
         return self.payment_proofs.first()
@@ -209,13 +234,19 @@ def payment_proof_upload_to(instance, filename):
     مسیر ذخیره فیش پرداخت کاربر:
     users/<user_id>/proofs/<subscription_id>/<short_uuid>.<ext>
     """
-    # ext = os.path.splitext(filename)[1].lower()
-    # short_uuid = uuid.uuid4().hex[:10]
-    # استخراج user_id از طریق رابطه‌ی subscription
+    # The extension is the only part of the original name we keep, and it
+    # has to survive: PaymentReceiptView derives Content-Type from it via
+    # mimetypes, so an extension-less key would be served as
+    # application/octet-stream and download instead of rendering.
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in (".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".gif"):
+        ext = ".jpg"
+
+    short_uuid = uuid.uuid4().hex[:10]
     user_id = instance.subscription.user_id
     sub_id = instance.subscription_id
 
-    return f"users/{user_id}/proofs/{sub_id}/{filename}"
+    return f"users/{user_id}/proofs/{sub_id}/{short_uuid}{ext}"
 
 
 class PaymentProofKindChoices(models.TextChoices):
@@ -245,8 +276,6 @@ class PaymentProof(models.Model):
     )
     amount = models.DecimalField(
         max_digits=12, decimal_places=2,
-        blank=True,
-        null=True,
         help_text="Amount this specific payment covers (snapshot at submission time)",
     )
 
@@ -259,6 +288,8 @@ class PaymentProof(models.Model):
     # PaymentReceiptView after a permission check - never a direct URL.
     receipt_image = models.FileField(
         upload_to=payment_proof_upload_to,
+        # Two UUIDs in the path plus a phone-generated filename easily
+        # exceeds FileField's 100-char default and fails on insert.
         max_length=500,
         storage=PrivateMediaStorage(),
         blank=True,

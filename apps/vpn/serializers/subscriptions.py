@@ -38,6 +38,7 @@ class UserVpnSubscriptionSerializer(serializers.ModelSerializer):
     is_unlimited_volume = serializers.BooleanField(read_only=True)
     is_unlimited_users = serializers.BooleanField(read_only=True)
     is_expired = serializers.BooleanField(read_only=True)
+    can_be_hidden = serializers.BooleanField(read_only=True)
     payment_status = serializers.SerializerMethodField()
     has_pending_payment = serializers.SerializerMethodField()
     plan_name = serializers.CharField(source="plan.name", read_only=True, default=None)
@@ -51,6 +52,7 @@ class UserVpnSubscriptionSerializer(serializers.ModelSerializer):
             "volume_gb", "duration_days", "max_concurrent_users",
             "remaining_days", "remaining_volume_gb",
             "is_unlimited_volume", "is_unlimited_users", "is_expired",
+            "can_be_hidden",
             "subscription_link", "started_at", "expires_at",
             "price", "payment_status", "has_pending_payment",
             "latest_proof", "renewal", "created_at",

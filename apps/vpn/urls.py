@@ -2,7 +2,7 @@ from django.urls import path
 
 from apps.vpn.views.plans import VpnPlanListView, CustomPlanOptionsView, CustomPlanQuoteView
 from apps.vpn.views.checkout import CheckoutView, RenewSubscriptionView
-from apps.vpn.views.dashboard import UserVpnSubscriptionListView
+from apps.vpn.views.dashboard import UserVpnSubscriptionListView, HideSubscriptionView
 from apps.vpn.views.admin_actions import ReviewPaymentProofView
 from apps.vpn.views.admin_panel import (
     AdminPlanListCreateView,
@@ -38,6 +38,12 @@ urlpatterns = [
         "vpn/subscriptions/<uuid:subscription_id>/configs/",
         SubscriptionConfigsView.as_view(),
         name="vpn-subscription-configs",
+    ),
+    # DELETE only - a soft "clear from my list", not a real deletion.
+    path(
+        "vpn/subscriptions/<uuid:subscription_id>/",
+        HideSubscriptionView.as_view(),
+        name="vpn-subscription-hide",
     ),
     path("vpn/subscriptions/", UserVpnSubscriptionListView.as_view(), name="vpn-subscription-list"),
 
