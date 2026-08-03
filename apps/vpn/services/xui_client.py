@@ -76,6 +76,32 @@ class ThreeXUiClient:
             payload["flow"] = flow
         return self._request("POST", "/panel/api/clients/bulkAdjust", json=payload)
 
+    def update_client(self, email, client_payload):
+        """
+        Replaces a client's row wholesale - the panel does NOT patch, so the
+        payload must carry every field that should survive. Fetch with
+        get_client() first and modify what you need.
+
+        Used for renewals, where the expiry has to be SET rather than
+        shifted: bulkAdjust only adds days, which on an already-expired
+        client just moves the old past date forward and silently short-
+        changes the customer.
+        """
+        return self._request(
+            "POST",
+            f"/panel/api/clients/update/{email}",
+            json=client_payload,
+        )
+
+    def bulk_reset_traffic(self, emails):
+        """Zeroes up/down counters. Renewals carry the leftover quota over
+        as fresh allowance instead, so the counters start clean."""
+        return self._request(
+            "POST",
+            "/panel/api/clients/bulkResetTraffic",
+            json={"emails": emails},
+        )
+
     def get_traffic(self, email):
         payload = self._request("GET", f"/panel/api/clients/traffic/{email}")
         return payload.get("obj") or {}

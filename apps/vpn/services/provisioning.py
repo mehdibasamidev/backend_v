@@ -146,22 +146,84 @@ def reject_subscription(subscription):
 
 def extend_subscription(subscription, extra_days=0, extra_gb=0):
     """
-    For renewals - adds days/GB on top of whatever the client currently
-    has on the panel (never resets them). Pass 0 for a dimension that
-    isn't changing. Not wired to any endpoint yet - the admin panel will
-    call this once we build the renewal action.
+    Applies an approved renewal on the panel.
+
+    Days are RESET, not added: a renewal always buys exactly the window
+    that was paid for, starting now. Adding would also be wrong for an
+    already-expired client - bulkAdjust shifts the old past expiry forward,
+    so someone who lapsed ten days ago would silently get ten days less
+    than they paid for.
+
+    Note this cuts both ways: renewing while time is still on the clock
+    discards the remainder. Deliberate - the rule stays "a renewal is
+    exactly N days from today", with no arithmetic for the customer to
+    second-guess. The UI should say so before they confirm.
+
+    Volume is CARRIED OVER rather than reset: whatever is left is added to
+    the new allowance and the counters start at zero. Nineteen of twenty
+    gigabytes used plus a twenty gigabyte renewal becomes twenty-one
+    gigabytes with nothing spent - no waste, and the dashboard ring starts
+    full instead of showing a sliver of an ever-growing total.
     """
     if not subscription.xui_client_email:
         raise ValueError("Subscription has no provisioned client to extend")
 
     client = ThreeXUiClient()
-    extra_bytes = extra_gb * (1024 ** 3) if extra_gb else 0
-    client.bulk_adjust(
-        emails=[subscription.xui_client_email],
-        add_days=extra_days,
-        add_bytes=extra_bytes,
-    )
-    return sync_subscription_usage(subscription)
+    email = subscription.xui_client_email
+
+    details = client.get_client(email)
+    panel_client = dict(details.get("client") or {})
+    if not panel_client:
+        raise AppException(
+            f"Client '{email}' was not found on the panel, so it cannot be renewed."
+        )
+
+    used_bytes = details.get("usedTraffic") or 0
+    current_total = panel_client.get("totalGB") or 0
+    current_expiry_ms = panel_client.get("expiryTime") or 0
+
+    now = timezone.now()
+
+    # --- expiry ---
+    if current_expiry_ms == 0:
+        # 0 means "never expires" on the panel; adding a window would be a
+        # downgrade, so leave it alone.
+        new_expiry_ms = 0
+        new_expires_at = None
+    else:
+        # Straight reset - any unused time on the old window is dropped.
+        new_expires_at = now + timedelta(days=extra_days)
+        new_expiry_ms = int(new_expires_at.timestamp() * 1000)
+
+    # --- quota ---
+    if current_total == 0:
+        # Unlimited stays unlimited - the panel ignores traffic changes on
+        # such clients anyway.
+        new_total = 0
+        reset_traffic = False
+    else:
+        remaining = max(current_total - used_bytes, 0)
+        new_total = remaining + (extra_gb * (1024 ** 3))
+        reset_traffic = True
+
+    # Counters must be zeroed BEFORE the new total lands, otherwise the
+    # carried-over remainder would immediately look spent.
+    if reset_traffic:
+        client.bulk_reset_traffic([email])
+
+    panel_client["totalGB"] = new_total
+    panel_client["expiryTime"] = new_expiry_ms
+    # A client auto-disabled for being depleted or expired has to come back.
+    panel_client["enable"] = True
+    client.update_client(email, panel_client)
+
+    subscription.volume_gb = 0 if new_total == 0 else new_total // (1024 ** 3)
+    subscription.used_traffic_bytes = 0 if reset_traffic else used_bytes
+    subscription.expires_at = new_expires_at
+    subscription.last_synced_at = now
+    subscription.status = SubscriptionStatusChoices.ACTIVE
+    subscription.save()
+    return subscription
 
 
 def get_client_configs(subscription):
