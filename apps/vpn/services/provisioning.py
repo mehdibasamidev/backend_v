@@ -144,6 +144,32 @@ def reject_subscription(subscription):
     return subscription
 
 
+# Fields the panel manages itself. get_client returns them, but the update
+# endpoint uses a different struct and rejects them - notably `id`, which is
+# the numeric DB row id on read while update expects a string there. Echoing
+# it back produced:
+#   json: cannot unmarshal number into Go struct field Client.id of type string
+#
+# Casting it to "56" would silence the error and is exactly the wrong fix:
+# in the classic 3x-ui schema `id` IS the protocol UUID, so writing a row id
+# into it can rewrite the client's identity and break their existing links.
+# Dropping it is safe - the URL already identifies the client by email, and
+# `uuid` travels in its own field.
+_PANEL_MANAGED_FIELDS = ("id", "createdAt", "updatedAt")
+
+
+def _client_update_payload(panel_client):
+    """Strips server-managed keys so the payload matches the update struct."""
+    payload = {
+        k: v for k, v in panel_client.items() if k not in _PANEL_MANAGED_FIELDS
+    }
+    # `reverse` is writable but only when actually set; sending null trips
+    # the same unmarshalling path.
+    if payload.get("reverse") is None:
+        payload.pop("reverse", None)
+    return payload
+
+
 def extend_subscription(subscription, extra_days=0, extra_gb=0):
     """
     Applies an approved renewal on the panel.
@@ -206,16 +232,40 @@ def extend_subscription(subscription, extra_days=0, extra_gb=0):
         new_total = remaining + (extra_gb * (1024 ** 3))
         reset_traffic = True
 
-    # Counters must be zeroed BEFORE the new total lands, otherwise the
-    # carried-over remainder would immediately look spent.
-    if reset_traffic:
-        client.bulk_reset_traffic([email])
-
-    panel_client["totalGB"] = new_total
-    panel_client["expiryTime"] = new_expiry_ms
+    payload = _client_update_payload(panel_client)
+    payload["totalGB"] = new_total
+    payload["expiryTime"] = new_expiry_ms
     # A client auto-disabled for being depleted or expired has to come back.
-    panel_client["enable"] = True
-    client.update_client(email, panel_client)
+    payload["enable"] = True
+
+    # These two calls are not atomic, so the order is chosen by which
+    # half-finished state is least damaging.
+    #
+    # Resetting first would mean a failed update leaves the old quota with a
+    # wiped meter - free traffic, and unrecoverable once it's spent.
+    # Updating first means a failed reset leaves the customer short of what
+    # they paid for, which is visible, complainable, and fixed by retrying.
+    client.update_client(email, payload)
+
+    if reset_traffic:
+        try:
+            client.bulk_reset_traffic([email])
+        except Exception:
+            # Roll the quota back so the client is exactly as it was and the
+            # renewal can safely be retried - leaving new_total in place with
+            # the old meter would quietly shortchange them.
+            logger.exception(
+                "Traffic reset failed for %s during renewal; reverting quota",
+                email,
+            )
+            revert = dict(payload)
+            revert["totalGB"] = current_total
+            revert["expiryTime"] = current_expiry_ms
+            try:
+                client.update_client(email, revert)
+            except Exception:
+                logger.exception("Quota revert also failed for %s", email)
+            raise
 
     subscription.volume_gb = 0 if new_total == 0 else new_total // (1024 ** 3)
     subscription.used_traffic_bytes = 0 if reset_traffic else used_bytes
