@@ -1,4 +1,5 @@
 import logging
+import math
 import re
 import secrets
 import string
@@ -155,41 +156,26 @@ def reject_subscription(subscription):
 # into it can rewrite the client's identity and break their existing links.
 # Dropping it is safe - the URL already identifies the client by email, and
 # `uuid` travels in its own field.
-_PANEL_MANAGED_FIELDS = ("id", "createdAt", "updatedAt")
-
-
-def _client_update_payload(panel_client):
-    """Strips server-managed keys so the payload matches the update struct."""
-    payload = {
-        k: v for k, v in panel_client.items() if k not in _PANEL_MANAGED_FIELDS
-    }
-    # `reverse` is writable but only when actually set; sending null trips
-    # the same unmarshalling path.
-    if payload.get("reverse") is None:
-        payload.pop("reverse", None)
-    return payload
-
-
 def extend_subscription(subscription, extra_days=0, extra_gb=0):
     """
     Applies an approved renewal on the panel.
 
-    Days are RESET, not added: a renewal always buys exactly the window
-    that was paid for, starting now. Adding would also be wrong for an
-    already-expired client - bulkAdjust shifts the old past expiry forward,
-    so someone who lapsed ten days ago would silently get ten days less
-    than they paid for.
+    Days are RESET, not added: a renewal always buys exactly the window that
+    was paid for, starting now. This cuts both ways - renewing while time is
+    still on the clock discards the remainder. Deliberate: the rule stays "a
+    renewal is exactly N days from today", and the UI warns before they
+    confirm.
 
-    Note this cuts both ways: renewing while time is still on the clock
-    discards the remainder. Deliberate - the rule stays "a renewal is
-    exactly N days from today", with no arithmetic for the customer to
-    second-guess. The UI should say so before they confirm.
+    Volume is CARRIED OVER: whatever is left is added to the new allowance
+    and the counters start at zero. Nineteen of twenty gigabytes used plus a
+    twenty gigabyte renewal becomes twenty-one gigabytes with nothing spent.
 
-    Volume is CARRIED OVER rather than reset: whatever is left is added to
-    the new allowance and the counters start at zero. Nineteen of twenty
-    gigabytes used plus a twenty gigabyte renewal becomes twenty-one
-    gigabytes with nothing spent - no waste, and the dashboard ring starts
-    full instead of showing a sliver of an ever-growing total.
+    Both are expressed as deltas fed to bulkAdjust rather than absolute
+    values written with updateClient. updateClient replaces the whole row,
+    which means echoing back the object read from getClient - and the two
+    endpoints do not share a schema, so every mismatched field surfaces as
+    its own `cannot unmarshal ... into Go struct field Client.X` error.
+    Deltas avoid sending a client payload at all.
     """
     if not subscription.xui_client_email:
         raise ValueError("Subscription has no provisioned client to extend")
@@ -198,7 +184,7 @@ def extend_subscription(subscription, extra_days=0, extra_gb=0):
     email = subscription.xui_client_email
 
     details = client.get_client(email)
-    panel_client = dict(details.get("client") or {})
+    panel_client = details.get("client") or {}
     if not panel_client:
         raise AppException(
             f"Client '{email}' was not found on the panel, so it cannot be renewed."
@@ -210,61 +196,62 @@ def extend_subscription(subscription, extra_days=0, extra_gb=0):
 
     now = timezone.now()
 
-    # --- expiry ---
+    # --- expiry delta ---
+    # bulkAdjust skips clients with expiryTime == 0 (never expires), which is
+    # what we want - adding a window there would be a downgrade.
     if current_expiry_ms == 0:
-        # 0 means "never expires" on the panel; adding a window would be a
-        # downgrade, so leave it alone.
-        new_expiry_ms = 0
+        add_days = 0
         new_expires_at = None
     else:
-        # Straight reset - any unused time on the old window is dropped.
-        new_expires_at = now + timedelta(days=extra_days)
-        new_expiry_ms = int(new_expires_at.timestamp() * 1000)
+        target = now + timedelta(days=extra_days)
+        current_expires_at = datetime.fromtimestamp(
+            current_expiry_ms / 1000, tz=dt_timezone.utc
+        )
+        delta_seconds = (target - current_expires_at).total_seconds()
+        # Round up so the rounding to whole days never costs the customer
+        # time - at worst they get a few hours extra.
+        add_days = math.ceil(delta_seconds / 86400)
+        new_expires_at = current_expires_at + timedelta(days=add_days)
 
-    # --- quota ---
+    # --- quota delta ---
+    # total becomes (total - used) + extra, i.e. leftover plus the new
+    # allowance. bulkAdjust skips totalGB == 0 (unlimited), so an unlimited
+    # client is left alone automatically.
     if current_total == 0:
-        # Unlimited stays unlimited - the panel ignores traffic changes on
-        # such clients anyway.
+        add_bytes = 0
         new_total = 0
         reset_traffic = False
     else:
-        remaining = max(current_total - used_bytes, 0)
-        new_total = remaining + (extra_gb * (1024 ** 3))
+        extra_bytes = extra_gb * (1024 ** 3)
+        add_bytes = extra_bytes - used_bytes
+        new_total = current_total + add_bytes
         reset_traffic = True
 
-    payload = _client_update_payload(panel_client)
-    payload["totalGB"] = new_total
-    payload["expiryTime"] = new_expiry_ms
-    # A client auto-disabled for being depleted or expired has to come back.
-    payload["enable"] = True
+    if add_days == 0 and add_bytes == 0 and not reset_traffic:
+        # Nothing the panel can act on - an unlimited-everything client.
+        subscription.status = SubscriptionStatusChoices.ACTIVE
+        subscription.save(update_fields=["status", "updated_at"])
+        return subscription
 
-    # These two calls are not atomic, so the order is chosen by which
-    # half-finished state is least damaging.
-    #
-    # Resetting first would mean a failed update leaves the old quota with a
-    # wiped meter - free traffic, and unrecoverable once it's spent.
-    # Updating first means a failed reset leaves the customer short of what
-    # they paid for, which is visible, complainable, and fixed by retrying.
-    client.update_client(email, payload)
+    client.bulk_adjust(emails=[email], add_days=add_days, add_bytes=add_bytes)
 
     if reset_traffic:
         try:
             client.bulk_reset_traffic([email])
         except Exception:
-            # Roll the quota back so the client is exactly as it was and the
-            # renewal can safely be retried - leaving new_total in place with
-            # the old meter would quietly shortchange them.
+            # The two calls are not atomic. Leaving the raised quota with the
+            # old meter would quietly shortchange the customer, so undo the
+            # adjustment and let the renewal be retried.
             logger.exception(
-                "Traffic reset failed for %s during renewal; reverting quota",
+                "Traffic reset failed for %s during renewal; reverting adjustment",
                 email,
             )
-            revert = dict(payload)
-            revert["totalGB"] = current_total
-            revert["expiryTime"] = current_expiry_ms
             try:
-                client.update_client(email, revert)
+                client.bulk_adjust(
+                    emails=[email], add_days=-add_days, add_bytes=-add_bytes
+                )
             except Exception:
-                logger.exception("Quota revert also failed for %s", email)
+                logger.exception("Adjustment revert also failed for %s", email)
             raise
 
     subscription.volume_gb = 0 if new_total == 0 else new_total // (1024 ** 3)

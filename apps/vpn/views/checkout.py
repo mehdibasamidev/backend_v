@@ -125,7 +125,10 @@ class RenewalSerializer(serializers.Serializer):
     exposes a `renewal.mode` field. Whatever arrives, the price is resolved
     server-side by resolve_renewal().
     """
-    periods = serializers.IntegerField(min_value=1, max_value=12, required=False)
+    # Capped at two periods - a longer prepayment ties up a service the
+    # customer may not want that far ahead, and the panel quota grows with
+    # every renewal anyway.
+    periods = serializers.IntegerField(min_value=1, max_value=2, required=False)
     extra_days = serializers.IntegerField(min_value=0, required=False)
     extra_gb = serializers.IntegerField(min_value=0, required=False)
     receipt_image = serializers.FileField(required=False)

@@ -1,7 +1,12 @@
+import logging
+
 import requests
 from django.conf import settings
 
 from config.utils.exceptions import AppException
+
+
+logger = logging.getLogger("apps")
 
 
 class XuiApiException(AppException):
@@ -36,7 +41,18 @@ class ThreeXUiClient:
         response.raise_for_status()
         payload = response.json()
         if not payload.get("success", True):
-            raise XuiApiException(payload.get("msg") or "Unknown 3x-ui error")
+            msg = payload.get("msg") or "Unknown 3x-ui error"
+            # The panel's decode errors name a field but not the value we
+            # sent, which turns every schema mismatch into guesswork. Log
+            # what actually went over the wire.
+            logger.error(
+                "3x-ui rejected %s %s: %s | request body: %s",
+                method,
+                path,
+                msg,
+                kwargs.get("json") or kwargs.get("data"),
+            )
+            raise XuiApiException(msg)
         return payload
 
     def add_client(self, email, total_gb, expiry_time_ms, inbound_ids, limit_ip=0, tg_id=0):
