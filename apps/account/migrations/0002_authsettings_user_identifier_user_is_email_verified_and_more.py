@@ -3,8 +3,15 @@
 from django.conf import settings
 from django.db import migrations, models
 import django.db.models.deletion
-import django.utils.timezone
 import uuid
+
+
+def populate_identifiers(apps, schema_editor):
+    User = apps.get_model("account", "User")
+
+    for user in User.objects.filter(identifier__isnull=True).iterator():
+        user.identifier = uuid.uuid4().hex
+        user.save(update_fields=["identifier"])
 
 
 class Migration(migrations.Migration):
@@ -44,13 +51,13 @@ class Migration(migrations.Migration):
             model_name="user",
             name="identifier",
             field=models.CharField(
-                default=django.utils.timezone.now,
-                editable=False,
                 max_length=64,
+                null=True,
                 unique=True,
             ),
-            preserve_default=False,
         ),
+        migrations.RunPython(populate_identifiers,
+                             reverse_code=migrations.RunPython.noop),
         migrations.AddField(
             model_name="user",
             name="is_email_verified",
@@ -61,15 +68,46 @@ class Migration(migrations.Migration):
             name="is_phone_verified",
             field=models.BooleanField(default=False),
         ),
-        migrations.AlterField(
-            model_name="user",
-            name="email",
-            field=models.EmailField(blank=True, max_length=255, null=True, unique=True),
-        ),
+
         migrations.AlterField(
             model_name="user",
             name="phone_number",
-            field=models.CharField(blank=True, max_length=20, null=True, unique=True),
+            field=models.CharField(
+                blank=True,
+                max_length=20,
+                null=True,
+            ),
+        ),
+
+        migrations.RunSQL(
+            sql="""
+                UPDATE account_user
+                SET phone_number = NULL
+                WHERE phone_number = '';
+            """,
+            reverse_sql=migrations.RunSQL.noop,
+        ),
+
+        migrations.AlterField(
+            model_name="user",
+            name="email",
+            field=models.EmailField(
+                blank=True,
+                max_length=255,
+                null=True,
+                unique=True,
+            ),
+        ),
+
+        migrations.AlterField(
+            model_name="user",
+            name="phone_number",
+            field=models.CharField(
+                blank=True,
+                max_length=20,
+                null=True,
+                unique=True,
+            ),
         ),
         migrations.CreateModel(
             name="OtpCode",

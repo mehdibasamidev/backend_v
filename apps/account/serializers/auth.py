@@ -71,22 +71,27 @@ class PasswordLoginSerializer(serializers.Serializer):
     Which one it is gets resolved by MultiIdentifierBackend, so the client
     doesn't have to guess or offer a picker.
     """
-    identifier = serializers.CharField()
+    identifier = serializers.CharField(required=False)
+    email = serializers.EmailField(required=False)
     password = serializers.CharField(write_only=True)
 
     def validate(self, attrs):
-        user = authenticate(
-            username=attrs["identifier"].strip(),
-            password=attrs["password"],
+        identifier = (
+            attrs.get("identifier")
+            or attrs.get("email")
         )
+        if not identifier:
+            raise serializers.ValidationError(
+                {"identifier": "Email or identifier is required."}
+            )
+        user = authenticate(
+            username=identifier.strip(),
+            password=attrs["password"],)
         if not user:
-            # Deliberately does not distinguish "no such account" from
-            # "wrong password" - the difference is a free account-existence
-            # oracle for anyone probing.
             raise serializers.ValidationError("Invalid credentials.")
         if not user.is_active:
-            raise serializers.ValidationError("This account is disabled.")
-
+            raise serializers.ValidationError(
+                "This account is disabled.")
         attrs["user"] = user
         return attrs
 
