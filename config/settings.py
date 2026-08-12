@@ -233,6 +233,19 @@ TELEGRAM_ADMIN_GROUP_CHAT_ID = config("TELEGRAM_ADMIN_GROUP_CHAT_ID", default=""
 # --- optional AI receipt pre-check (no-ops when unset) ---
 ANTHROPIC_API_KEY = config("ANTHROPIC_API_KEY", default="")  # اختیاری، فقط برای بررسی AI فیش
 
+# --- Kavenegar SMS ---
+KAVENEGAR_API_KEY = config("KAVENEGAR_API_KEY", default="")
+KAVENEGAR_OTP_TEMPLATE = config("KAVENEGAR_OTP_TEMPLATE", default="")
+
+AUTHENTICATION_BACKENDS = [
+    'apps.account.backends.MultiIdentifierBackend',
+    'django.contrib.auth.backends.ModelBackend',
+]
+# ---------- Google Sign-In ----------
+GOOGLE_CLIENT_ID = config("GOOGLE_CLIENT_ID", default=None)
+
+# --- Logging ---
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,

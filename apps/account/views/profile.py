@@ -3,10 +3,7 @@ from rest_framework.permissions import IsAuthenticated
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework.parsers import MultiPartParser, JSONParser
 from rest_framework.renderers import JSONRenderer
-from apps.account.serializers import (
-    UserInfoSerializer,
-    UserProfileUpdateSerializer,
-)
+from apps.account.serializers.profile import UserInfoSerializer, UserProfileUpdateSerializer
 from config.utils.response import (
     SuccessResponse,
     BadRequestResponse,

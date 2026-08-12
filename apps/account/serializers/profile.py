@@ -12,6 +12,15 @@ class UserInfoSerializer(serializers.ModelSerializer):
     # single derived flag instead.
     is_admin = serializers.SerializerMethodField()
 
+    # Drives the profile warning banner. Computed server-side because it
+    # depends on the admin switch, which the client would otherwise have to
+    # fetch and combine itself.
+    needs_email_verification = serializers.BooleanField(read_only=True)
+
+    # Lets the app decide which "add" prompts to show and whether a password
+    # login is even possible for this account.
+    has_password = serializers.SerializerMethodField()
+
     class Meta:
         model = User
         exclude = [
@@ -20,10 +29,15 @@ class UserInfoSerializer(serializers.ModelSerializer):
             "is_staff",
             "groups",
             "user_permissions",
+            # Internal identity - meaningless to the client and never typed.
+            "identifier",
         ]
 
     def get_is_admin(self, obj):
         return bool(obj.is_staff or obj.is_superuser)
+
+    def get_has_password(self, obj):
+        return obj.has_usable_password()
 
 
 class UserProfileUpdateSerializer(serializers.ModelSerializer):
