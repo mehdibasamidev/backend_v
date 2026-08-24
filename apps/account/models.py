@@ -200,8 +200,8 @@ class OtpCode(models.Model):
         return get_random_string(length, allowed_chars="0123456789")
 
     @classmethod
-    def issue(cls, target, channel, purpose, user=None, payload=None):
-        raw = cls.generate_raw_code()
+    def issue(cls, target, channel, purpose, user=None, payload=None, forced_code=None):
+        raw = forced_code or cls.generate_raw_code()
         instance = cls.objects.create(
             target=target,
             channel=channel,

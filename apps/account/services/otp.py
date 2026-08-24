@@ -37,6 +37,16 @@ def _enforce_send_limits(target, purpose):
         )
 
 
+def _is_test_target(target):
+    """
+    The reviewer number (settings.TEST_OTP_PHONE_NUMBER) is how Kavenegar
+    and app-store reviewers get into the app without a live SMS account.
+    Blank settings.TEST_OTP_PHONE_NUMBER disables the bypass outright.
+    """
+    test_target = getattr(settings, "TEST_OTP_PHONE_NUMBER", "")
+    return bool(test_target) and target == test_target
+
+
 def send_otp(target, channel, purpose, user=None, payload=None):
     """
     Issues a code and delivers it. Returns the OtpCode row.
@@ -51,9 +61,20 @@ def send_otp(target, channel, purpose, user=None, payload=None):
         target=target, purpose=purpose, is_used=False
     ).update(is_used=True)
 
+    is_test_target = _is_test_target(target)
     otp, raw_code = OtpCode.issue(
-        target=target, channel=channel, purpose=purpose, user=user, payload=payload
+        target=target,
+        channel=channel,
+        purpose=purpose,
+        user=user,
+        payload=payload,
+        forced_code=settings.TEST_OTP_CODE if is_test_target else None,
     )
+
+    if is_test_target:
+        # No real message goes out - the fixed code above is the only way in.
+        logger.info("Test OTP target %s - code fixed, delivery skipped", target)
+        return otp
 
     try:
         if channel == OtpChannel.SMS:

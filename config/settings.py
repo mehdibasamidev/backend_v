@@ -237,6 +237,13 @@ ANTHROPIC_API_KEY = config("ANTHROPIC_API_KEY", default="")  # اختیاری، 
 KAVENEGAR_API_KEY = config("KAVENEGAR_API_KEY", default="")
 KAVENEGAR_OTP_TEMPLATE = config("KAVENEGAR_OTP_TEMPLATE", default="")
 
+# Reviewer/test account: this number always accepts this fixed code and
+# never triggers a real SMS, so app-store and provider reviewers can sign
+# in without a live Kavenegar account. Leave TEST_OTP_PHONE_NUMBER blank to
+# disable the bypass entirely.
+TEST_OTP_PHONE_NUMBER = config("TEST_OTP_PHONE_NUMBER", default="+989121234567")
+TEST_OTP_CODE = config("TEST_OTP_CODE", default="111111")
+
 AUTHENTICATION_BACKENDS = [
     'apps.account.backends.MultiIdentifierBackend',
     'django.contrib.auth.backends.ModelBackend',
