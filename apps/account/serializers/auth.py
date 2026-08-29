@@ -42,7 +42,7 @@ class EmailRegisterSerializer(serializers.Serializer):
     serializer only guarantees the input is usable.
     """
     email = serializers.EmailField()
-    password = serializers.CharField(write_only=True, min_length=8)
+    password = serializers.CharField(write_only=True, min_length=4)
 
     def validate_email(self, value):
         value = value.strip().lower()

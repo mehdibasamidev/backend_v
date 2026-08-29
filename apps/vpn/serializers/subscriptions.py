@@ -38,6 +38,10 @@ class UserVpnSubscriptionSerializer(serializers.ModelSerializer):
     is_unlimited_volume = serializers.BooleanField(read_only=True)
     is_unlimited_users = serializers.BooleanField(read_only=True)
     is_expired = serializers.BooleanField(read_only=True)
+    # Bytes are the panel's unit, but nothing in the UI shows bytes - and
+    # for an unlimited plan this is the ONLY usage figure that means
+    # anything, since there is no quota to subtract from.
+    used_gb = serializers.SerializerMethodField()
     can_be_hidden = serializers.BooleanField(read_only=True)
     payment_status = serializers.SerializerMethodField()
     has_pending_payment = serializers.SerializerMethodField()
@@ -52,12 +56,16 @@ class UserVpnSubscriptionSerializer(serializers.ModelSerializer):
             "volume_gb", "duration_days", "max_concurrent_users",
             "remaining_days", "remaining_volume_gb",
             "is_unlimited_volume", "is_unlimited_users", "is_expired",
+            "used_gb",
             "can_be_hidden",
             "subscription_link", "started_at", "expires_at",
             "price", "payment_status", "has_pending_payment",
             "latest_proof", "renewal", "created_at",
         ]
         read_only_fields = fields
+
+    def get_used_gb(self, obj):
+        return round(obj.used_traffic_bytes / (1024 ** 3), 2)
 
     def get_payment_status(self, obj):
         proof = obj.latest_payment_proof
@@ -109,3 +117,4 @@ class UserVpnSubscriptionSerializer(serializers.ModelSerializer):
         if not proof:
             return None
         return OwnPaymentProofSerializer(proof, context=self.context).data
+    

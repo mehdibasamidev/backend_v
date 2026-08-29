@@ -31,6 +31,7 @@ urlpatterns = [
     path("auth/phone/start/", PhoneRegisterStartView.as_view(), name="auth-phone-start"),
     path("auth/phone/verify/", PhoneVerifyView.as_view(), name="auth-phone-verify"),
 
+    # Sign in or sign up in one call - the address decides which.
     path("auth/email/register/", EmailRegisterView.as_view(), name="auth-email-register"),
     path("auth/email/verify/", EmailVerifyView.as_view(), name="auth-email-verify"),
 
