@@ -117,4 +117,3 @@ class UserVpnSubscriptionSerializer(serializers.ModelSerializer):
         if not proof:
             return None
         return OwnPaymentProofSerializer(proof, context=self.context).data
-    
