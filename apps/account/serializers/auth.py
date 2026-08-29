@@ -4,6 +4,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
 from apps.account.models import AuthSettings
+from apps.referral.services.redemption import referral_required, validate_for_signup
 from apps.account.services.phone import normalize_phone
 from config.utils.exceptions import BadRequestException
 
@@ -24,8 +25,16 @@ class PhoneField(serializers.CharField):
 # ---------------------------------------------------------------- register
 
 class PhoneStartSerializer(serializers.Serializer):
-    """Step 1 of a phone signup or a phone sign-in - just the number."""
+    """
+    Step 1 of a phone signup or sign-in.
+
+    The referral code is only meaningful for a signup, and the view knows
+    which this is - so validation lives there rather than here, where the
+    serializer can't tell a returning user from a new one and would demand
+    a code from someone who already has an account.
+    """
     phone_number = PhoneField()
+    referral_code = serializers.CharField(required=False, allow_blank=True)
 
 
 class PhoneVerifySerializer(serializers.Serializer):
@@ -44,6 +53,10 @@ class EmailRegisterSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True, min_length=4)
 
+    # Optional at the field level; whether it is actually required is a
+    # runtime setting, checked in validate() below.
+    referral_code = serializers.CharField(required=False, allow_blank=True)
+
     def validate_email(self, value):
         value = value.strip().lower()
         if User.objects.filter(email__iexact=value).exists():
@@ -56,6 +69,31 @@ class EmailRegisterSerializer(serializers.Serializer):
         except DjangoValidationError as exc:
             raise serializers.ValidationError(list(exc.messages))
         return value
+
+    def validate(self, attrs):
+        """
+        The code is resolved HERE, before anything is created or any OTP is
+        sent. Checking it later would mean a customer completes a code
+        round trip and only then learns their invite was invalid - and, with
+        verification off, that an account was created for them and then had
+        to be undone.
+        """
+        raw = attrs.get("referral_code", "")
+
+        if referral_required() and not raw.strip():
+            raise serializers.ValidationError(
+                {"referral_code": "An invite code is required to sign up."}
+            )
+
+        try:
+            code = validate_for_signup(raw)
+        except BadRequestException as exc:
+            raise serializers.ValidationError({"referral_code": exc.message})
+
+        # Carried through so the view can redeem it against the new account
+        # without resolving the same string twice.
+        attrs["resolved_referral_code"] = code.code if code else ""
+        return attrs
 
 
 class EmailVerifySerializer(serializers.Serializer):
@@ -71,27 +109,22 @@ class PasswordLoginSerializer(serializers.Serializer):
     Which one it is gets resolved by MultiIdentifierBackend, so the client
     doesn't have to guess or offer a picker.
     """
-    identifier = serializers.CharField(required=False)
-    email = serializers.EmailField(required=False)
+    identifier = serializers.CharField()
     password = serializers.CharField(write_only=True)
 
     def validate(self, attrs):
-        identifier = (
-            attrs.get("identifier")
-            or attrs.get("email")
-        )
-        if not identifier:
-            raise serializers.ValidationError(
-                {"identifier": "Email or identifier is required."}
-            )
         user = authenticate(
-            username=identifier.strip(),
-            password=attrs["password"],)
+            username=attrs["identifier"].strip(),
+            password=attrs["password"],
+        )
         if not user:
+            # Deliberately does not distinguish "no such account" from
+            # "wrong password" - the difference is a free account-existence
+            # oracle for anyone probing.
             raise serializers.ValidationError("Invalid credentials.")
         if not user.is_active:
-            raise serializers.ValidationError(
-                "This account is disabled.")
+            raise serializers.ValidationError("This account is disabled.")
+
         attrs["user"] = user
         return attrs
 
@@ -100,7 +133,7 @@ class PasswordLoginSerializer(serializers.Serializer):
 
 class AddEmailSerializer(serializers.Serializer):
     email = serializers.EmailField()
-    password = serializers.CharField(write_only=True, required=False, min_length=8)
+    password = serializers.CharField(write_only=True, required=False, min_length=4)
 
     def validate_email(self, value):
         value = value.strip().lower()
@@ -153,7 +186,7 @@ class ResetPasswordStartSerializer(serializers.Serializer):
 class ResetPasswordConfirmSerializer(serializers.Serializer):
     identifier = serializers.CharField()
     code = serializers.CharField(min_length=4, max_length=8)
-    new_password = serializers.CharField(write_only=True, min_length=8)
+    new_password = serializers.CharField(write_only=True, min_length=4)
 
     def validate_new_password(self, value):
         try:

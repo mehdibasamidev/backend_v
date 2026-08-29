@@ -1,3 +1,5 @@
+import logging
+
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import make_password
 from drf_yasg.utils import swagger_auto_schema
@@ -21,9 +23,35 @@ from apps.account.services.registration import (
     email_otp_required,
 )
 from apps.account.services.session import issue_session
+from apps.referral.services.redemption import (
+    redeem,
+    referral_required,
+    validate_for_signup,
+)
+from config.utils.exceptions import AppException
 from config.utils.response import SuccessResponse, BadRequestResponse
 
+logger = logging.getLogger("apps")
+
 User = get_user_model()
+
+
+def _consume_referral(code, user):
+    """
+    Records the redemption once the account exists.
+
+    Failures are swallowed on purpose: the code was already validated
+    before anything was created, so a failure here means something raced -
+    and refusing an account the customer has already paid attention to,
+    over bookkeeping, is the wrong trade. The gap shows up as a signup with
+    no Referral row, which is visible in the admin.
+    """
+    if not code:
+        return
+    try:
+        redeem(code, user)
+    except Exception:
+        logger.exception("Could not record referral %s for user %s", code, user.id)
 
 
 def _auth_payload(user):
@@ -55,11 +83,31 @@ class PhoneRegisterStartView(APIView):
         purpose = (
             OtpPurpose.LOGIN_PHONE if existing else OtpPurpose.REGISTER_PHONE
         )
+
+        # Only a new number needs an invite. Demanding one from a returning
+        # user would lock out everyone who signed up before the rule - and
+        # they have no code to give.
+        referral_code = ""
+        if existing is None:
+            raw = serializer.validated_data.get("referral_code", "")
+            if referral_required() and not raw.strip():
+                return BadRequestResponse(
+                    errors={"referral_code": "An invite code is required to sign up."}
+                )
+            try:
+                resolved = validate_for_signup(raw)
+            except AppException as e:
+                return BadRequestResponse(errors={"referral_code": e.message})
+            referral_code = resolved.code if resolved else ""
+
         send_otp(
             target=phone,
             channel=OtpChannel.SMS,
             purpose=purpose,
             user=existing,
+            # Carried to the verify step so the account and the redemption
+            # are created together.
+            payload={"referral_code": referral_code} if referral_code else {},
         )
 
         return SuccessResponse(
@@ -94,6 +142,7 @@ class PhoneVerifyView(APIView):
         user = otp.user or existing
         if user is None:
             user = create_phone_user(phone)
+            _consume_referral(otp.payload.get("referral_code", ""), user)
         elif not user.is_phone_verified:
             # Covers a number attached before this flow existed.
             user.is_phone_verified = True
@@ -128,8 +177,11 @@ class EmailRegisterView(APIView):
         email = serializer.validated_data["email"]
         password = serializer.validated_data["password"]
 
+        referral_code = serializer.validated_data.get("resolved_referral_code", "")
+
         if not email_otp_required():
             user = create_email_user(email, raw_password=password, verified=False)
+            _consume_referral(referral_code, user)
             return SuccessResponse(
                 data=_auth_payload(user),
                 message="Account created.",
@@ -139,7 +191,12 @@ class EmailRegisterView(APIView):
             target=email,
             channel=OtpChannel.EMAIL,
             purpose=OtpPurpose.REGISTER_EMAIL,
-            payload={"password": make_password(password)},
+            # The code rides along with the password so the account and the
+            # redemption are created together once the code is confirmed.
+            payload={
+                "password": make_password(password),
+                "referral_code": referral_code,
+            },
         )
         return SuccessResponse(
             data={"email": email, "verification_required": True},
@@ -176,6 +233,7 @@ class EmailVerifyView(APIView):
             hashed_password=otp.payload.get("password"),
             verified=True,
         )
+        _consume_referral(otp.payload.get("referral_code", ""), user)
         return SuccessResponse(
             data=_auth_payload(user),
             message="Account created and email verified.",
