@@ -6,6 +6,7 @@ from telegram.ext import ContextTypes
 
 from apps.vpn.services.ai_receipt import analyze_payment_receipt
 from apps.vpn.services.checkout import create_paid_order
+from apps.bot.handlers.referral import try_handle_referral_code
 from apps.bot.services.registration import get_or_create_telegram_user
 
 
@@ -32,13 +33,27 @@ async def receive_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Generic photo/text handler. Only acts when the user is mid-checkout;
     otherwise this is just a normal chat message and we ignore it.
+
+    Signup codes get first refusal: both flows read a plain text message,
+    and awaiting_action holds one value at a time, so whichever handler
+    runs first has to be the one that was actually asked for.
     """
+    if update.message and update.message.text:
+        if await try_handle_referral_code(update, context):
+            return
+
     def _load_state():
         profile = get_or_create_telegram_user(update.effective_user)
+        if profile is None:
+            return None, None
         order = _parse_awaiting(profile.awaiting_action or "")
         return profile, order
 
     profile, order = await sync_to_async(_load_state)()
+    # Not registered: nothing to attach a receipt to, and the referral
+    # handler above already replied if a code was what they owed us.
+    if profile is None:
+        return
     if order is None:
         return  # not checking out right now - ignore
 

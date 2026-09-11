@@ -2,12 +2,31 @@ from asgiref.sync import sync_to_async
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from apps.bot.services.registration import get_or_create_telegram_user
 from apps.bot.services.keyboards import main_menu_keyboard
+from apps.bot.services.registration import (
+    begin_referral_prompt,
+    get_or_create_telegram_user,
+)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await sync_to_async(get_or_create_telegram_user)(update.effective_user)
+    profile = await sync_to_async(get_or_create_telegram_user)(
+        update.effective_user
+    )
+
+    # None means invite codes are required and this person doesn't have an
+    # account yet. Nothing is created until they send a valid one, so the
+    # menu is deliberately withheld - showing it would offer plans they
+    # can't actually buy.
+    if profile is None:
+        await sync_to_async(begin_referral_prompt)(update.effective_user)
+        await update.message.reply_text(
+            "سلام 👋\n\n"
+            "برای ثبت‌نام به یک کد معرف نیاز داری.\n"
+            "کدت رو همین‌جا برام بفرست تا حسابت ساخته بشه."
+        )
+        return
+
     await update.message.reply_text(
         "سلام 👋\nاز این‌جا می‌تونی سرویس VPN بخری، پلن سفارشی بسازی یا سرویس‌های فعالت رو مدیریت کنی.",
         reply_markup=main_menu_keyboard(),

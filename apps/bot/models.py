@@ -15,14 +15,23 @@ class TelegramProfile(models.Model):
     correctly even if you ever run multiple webhook workers.
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # Nullable because a profile now exists BEFORE the account does: when
+    # invite codes are required, /start records who is being asked for one
+    # so their next message is read as that code. Creating the User first
+    # and deleting it on a bad code would leave orphans behind every typo.
     user = models.OneToOneField(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="telegram_profile",
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="telegram_profile",
+        null=True,
+        blank=True,
     )
     telegram_user_id = models.BigIntegerField(unique=True)
     telegram_username = models.CharField(max_length=64, blank=True)
     telegram_first_name = models.CharField(max_length=150, blank=True)
 
-    # e.g. "receipt:<subscription_id>" while we're waiting for a payment proof.
+    # e.g. "checkout:fixed:<plan_id>" while we're waiting for a payment
+    # proof, or "awaiting_referral_code" during a gated signup.
     # Blank means "not waiting for anything in particular".
     awaiting_action = models.CharField(max_length=100, blank=True)
 

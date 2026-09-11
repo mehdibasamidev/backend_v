@@ -22,6 +22,8 @@ async def list_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     def _get():
         profile = get_or_create_telegram_user(update.effective_user)
+        if profile is None:
+            return None
         return list(
             UserVpnSubscription.objects
             .filter(user=profile.user)
@@ -30,6 +32,11 @@ async def list_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
 
     subs = await sync_to_async(_get)()
+
+    # None is "no account"; an empty list is "account, no services yet".
+    if subs is None:
+        await query.edit_message_text("برای خرید اول باید ثبت‌نام کنی.\nدستور /start رو بزن و کد معرفت رو وارد کن.")
+        return
 
     if not subs:
         await query.edit_message_text("هنوز هیچ سرویسی نداری.", reply_markup=main_menu_keyboard())

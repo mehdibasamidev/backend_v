@@ -10,7 +10,15 @@ from telegram.ext import (
     filters,
 )
 
-from apps.bot.handlers import common, plans, custom_plan, subscriptions, payment, admin_review
+from apps.bot.handlers import (
+    common,
+    plans,
+    custom_plan,
+    subscriptions,
+    payment,
+    admin_review,
+    referral,
+)
 
 _application: Application | None = None
 _init_lock = asyncio.Lock()
@@ -25,6 +33,7 @@ def build_application() -> Application:
     )
 
     application.add_handler(CommandHandler("start", common.start))
+    application.add_handler(CommandHandler("mycode", referral.my_referral_code))
     application.add_handler(CallbackQueryHandler(common.show_main_menu, pattern=r"^menu:main$"))
     application.add_handler(CallbackQueryHandler(common.noop, pattern=r"^noop$"))
 
@@ -38,6 +47,9 @@ def build_application() -> Application:
 
     application.add_handler(CallbackQueryHandler(subscriptions.list_subscriptions, pattern=r"^menu:subscriptions$"))
 
+    # One text handler for everything: receive_receipt checks for a pending
+    # invite code before treating the message as a payment receipt. Two
+    # separate MessageHandlers would both fire on the same update.
     application.add_handler(MessageHandler(filters.PHOTO | (filters.TEXT & ~filters.COMMAND), payment.receive_receipt))
 
     application.add_handler(CallbackQueryHandler(admin_review.review, pattern=r"^review:(approve|reject):"))

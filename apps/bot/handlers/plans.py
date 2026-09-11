@@ -54,6 +54,10 @@ async def buy_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     def _prepare():
         profile = get_or_create_telegram_user(update.effective_user)
+        # None when invite codes are required and this person hasn't given
+        # one - buying is impossible without an account.
+        if profile is None:
+            return "unregistered"
         try:
             plan = VpnPlan.objects.get(id=plan_id, is_active=True)
         except VpnPlan.DoesNotExist:
@@ -62,6 +66,11 @@ async def buy_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return plan
 
     plan = await sync_to_async(_prepare)()
+    # A sentinel rather than None: "not registered" and "plan withdrawn"
+    # need different replies, and both would otherwise be None.
+    if plan == "unregistered":
+        await query.edit_message_text("برای خرید اول باید ثبت‌نام کنی.\nدستور /start رو بزن و کد معرفت رو وارد کن.")
+        return
     if plan is None:
         await query.edit_message_text("این پلن دیگه موجود نیست.")
         return

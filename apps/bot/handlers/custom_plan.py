@@ -51,12 +51,17 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     def _prepare():
         profile = get_or_create_telegram_user(update.effective_user)
+        if profile is None:
+            return None
         price = calculate_custom_plan_price(gb, days, users)
         profile.set_awaiting_action(f"checkout:custom:{gb}:{days}:{users}")
         return price
 
     try:
         price = await sync_to_async(_prepare)()
+        if price is None:
+            await query.edit_message_text("برای خرید اول باید ثبت‌نام کنی.\nدستور /start رو بزن و کد معرفت رو وارد کن.")
+            return
     except Exception as e:
         await query.edit_message_text(f"⚠️ خطا: {e}")
         return
