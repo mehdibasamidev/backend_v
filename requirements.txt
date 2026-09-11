@@ -61,5 +61,3 @@ pytest-django~=4.6
 # Translation (uncomment if you enable django-parler)
 # django-parler~=2.3
 # django-parler-rest~=2.0
-
-httpx[socks]~=0.27
