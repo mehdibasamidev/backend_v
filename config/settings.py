@@ -242,6 +242,11 @@ TELEGRAM_WEBHOOK_SECRET = config("TELEGRAM_WEBHOOK_SECRET", default="")        #
 TELEGRAM_BASE_WEBHOOK_URL = config("TELEGRAM_BASE_WEBHOOK_URL", default="")    # https://api.yourdomain.com
 TELEGRAM_ADMIN_GROUP_CHAT_ID = config("TELEGRAM_ADMIN_GROUP_CHAT_ID", default="")
 
+# Outbound only. Telegram reaching us is inbound and unaffected by filtering;
+# every reply the bot sends is a request FROM this server, which is the half
+# that fails from Iran.
+TELEGRAM_PROXY_URL = config("TELEGRAM_PROXY_URL", default="")
+
 # --- optional AI receipt pre-check (no-ops when unset) ---
 ANTHROPIC_API_KEY = config("ANTHROPIC_API_KEY", default="")  # اختیاری، فقط برای بررسی AI فیش
 

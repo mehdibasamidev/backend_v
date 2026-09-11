@@ -25,12 +25,31 @@ _init_lock = asyncio.Lock()
 
 
 def build_application() -> Application:
-    application = (
+    builder = (
         ApplicationBuilder()
         .token(settings.TELEGRAM_BOT_TOKEN)
         .updater(None)  # updates are fed in manually from the Django webhook view - no polling/built-in webserver
-        .build()
     )
+
+    # Outbound calls to api.telegram.org are what actually need this, not the
+    # webhook: Telegram reaching us is inbound and unaffected, but every reply
+    # the bot sends is a request FROM this server. On a host where that
+    # destination is unreachable, the bot receives everything and answers
+    # nothing - which looks exactly like the bot being dead.
+    proxy = getattr(settings, "TELEGRAM_PROXY_URL", "")
+    if proxy:
+        builder = builder.proxy(proxy).get_updates_proxy(proxy)
+
+    # Telegram's own timeouts are short; a proxied hop is slower than a direct
+    # one, and the default read timeout will cut replies off part-way.
+    builder = (
+        builder
+        .connect_timeout(20.0)
+        .read_timeout(20.0)
+        .write_timeout(20.0)
+    )
+
+    application = builder.build()
 
     application.add_handler(CommandHandler("start", common.start))
     application.add_handler(CommandHandler("mycode", referral.my_referral_code))
