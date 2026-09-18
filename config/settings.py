@@ -59,7 +59,7 @@ ROOT_URLCONF = 'config.urls'
 
 # Authentication backends
 AUTHENTICATION_BACKENDS = [
-    'apps.account.backends.EmailOrUsernameModelBackend',
+    'apps.account.backends.MultiIdentifierBackend',
     'django.contrib.auth.backends.ModelBackend',  # Keep default as fallback
 ]
 
