@@ -40,7 +40,7 @@ services:
     networks:
       spacedigital_vpn_net:
         aliases:
-          - minio
+          - vpnminio
 
   spacedigital_vpn_django:
     build: .
