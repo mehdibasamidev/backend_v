@@ -38,7 +38,9 @@ services:
       - "127.0.0.1:9000:9000" # S3 API - Private to HAProxy
       - "127.0.0.1:9090:9090" # Console - Private to HAProxy
     networks:
-      - spacedigital_vpn_net
+      spacedigital_vpn_net:
+        aliases:
+          - minio
 
   spacedigital_vpn_django:
     build: .
@@ -60,7 +62,6 @@ services:
     networks:
       - spacedigital_vpn_net
 
-
 volumes:
   spacedigital_vpn_postgres_data:
     name: spacedigital_vpn_postgres_data
@@ -69,7 +70,6 @@ volumes:
   spacedigital_vpn_minio_data:
     name: spacedigital_vpn_minio_data
     external: true
-
 
 networks:
   spacedigital_vpn_net:
