@@ -147,7 +147,7 @@ DEBUG=False
 SECRET_KEY=<new-long-random-django-secret>
 ALLOWED_HOSTS=api.example.com,YOUR_SERVER_IP,127.0.0.1
 SWAGGER_API_URL=https://api.example.com
-ACCESS_TOKEN_LIFETIME_MINUTES=30
+ACCESS_TOKEN_LIFETIME_DAYS=30
 REFRESH_TOKEN_LIFETIME_DAYS=1
 
 # PostgreSQL: مقدار HOST داخل Docker باید db باشد

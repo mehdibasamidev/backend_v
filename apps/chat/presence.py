@@ -1,10 +1,10 @@
 
 import redis
-import os
+from decouple import config
 
 redis_client = redis.Redis(
-    host=os.getenv("REDIS_HOST", "redis"),
-    port=6379,
+    host=config("REDIS_HOST", "spacedigital_vpn_redis"),
+    port=config("REDIS_PORT", 6379),
     db=0
 )
 

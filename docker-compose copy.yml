@@ -64,11 +64,9 @@ services:
 volumes:
   spacedigital_vpn_postgres_data:
     name: spacedigital_vpn_postgres_data
-    external: true
 
   spacedigital_vpn_minio_data:
     name: spacedigital_vpn_minio_data
-    external: true
 
 
 networks:

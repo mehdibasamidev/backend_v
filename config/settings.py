@@ -9,7 +9,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = config('SECRET_KEY')
 DEBUG = config('DEBUG', cast=bool)
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', cast=Csv())
-CSRF_TRUSTED_ORIGINS = ["https://api.bodyremix.ir"]
+CSRF_TRUSTED_ORIGINS = ["https://api.bodyremix.ir", "https://api.spacedigital.top"]
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 # APPLICATION DEFINITION
@@ -142,7 +142,7 @@ REST_FRAMEWORK = {
 
 # SIMPLE JWT SETTINGS
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(days=config('ACCESS_TOKEN_LIFETIME_MINUTES', default=90, cast=int)),
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=config('ACCESS_TOKEN_LIFETIME_DAYS', default=30, cast=int)),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=config('REFRESH_TOKEN_LIFETIME_DAYS', default=1, cast=int)),
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
@@ -184,13 +184,13 @@ AWS_ACCESS_KEY_ID = config("MINIO_ROOT_USER")
 AWS_SECRET_ACCESS_KEY = config("MINIO_ROOT_PASSWORD")
 
 # Internal address Django uses to reach MinIO inside the docker network
-AWS_S3_ENDPOINT_URL = config("MINIO_ENDPOINT", default="http://minio:9000")
+AWS_S3_ENDPOINT_URL = config("MINIO_ENDPOINT", default="http://spacedigital_vpn_minio:9000")
 
 AWS_STORAGE_BUCKET_NAME = config("MINIO_BUCKET_NAME", default="media")
 AWS_PRIVATE_STORAGE_BUCKET_NAME = config("MINIO_PRIVATE_BUCKET_NAME", default="private")
 
 # MUST include the bucket - custom_domain replaces host AND bucket.
-AWS_S3_CUSTOM_DOMAIN = "minio.bodyremix.ir/media"
+AWS_S3_CUSTOM_DOMAIN = "minio.spacedigital.top/media"
 AWS_S3_URL_PROTOCOL = "https:"
 
 AWS_S3_ADDRESSING_STYLE = "path"
@@ -213,8 +213,8 @@ CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            # "hosts": [('127.0.0.1', 6379)],//TODO  its for dev
-            "hosts": [('redis', 6379)],  # Use the service name from docker-compose
+            # "hosts": [('127.0.0.1', 6379)],
+            "hosts": [(config("REDIS_HOST", default="spacedigital_vpn_redis"), config("REDIS_PORT", default=6379, cast=int))],  # Use the service name from docker-compose
         },
     },
 }
@@ -261,10 +261,6 @@ KAVENEGAR_OTP_TEMPLATE = config("KAVENEGAR_OTP_TEMPLATE", default="")
 TEST_OTP_PHONE_NUMBER = config("TEST_OTP_PHONE_NUMBER", default="+989121234567")
 TEST_OTP_CODE = config("TEST_OTP_CODE", default="111111")
 
-AUTHENTICATION_BACKENDS = [
-    'apps.account.backends.MultiIdentifierBackend',
-    'django.contrib.auth.backends.ModelBackend',
-]
 # ---------- Google Sign-In ----------
 GOOGLE_CLIENT_ID = config("GOOGLE_CLIENT_ID", default=None)
 
