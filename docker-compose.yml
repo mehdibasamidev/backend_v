@@ -1,4 +1,7 @@
 services:
+  # ============================================================
+  # PostgreSQL
+  # ============================================================
   spacedigital_vpn_db:
     image: postgres:15
     container_name: spacedigital_vpn_db
@@ -12,6 +15,10 @@ services:
     networks:
       - spacedigital_vpn_net
 
+
+  # ============================================================
+  # Redis
+  # ============================================================
   spacedigital_vpn_redis:
     image: redis:7-alpine
     container_name: spacedigital_vpn_redis
@@ -21,6 +28,10 @@ services:
     networks:
       - spacedigital_vpn_net
 
+
+  # ============================================================
+  # MinIO
+  # ============================================================
   spacedigital_vpn_minio:
     image: minio/minio
     container_name: spacedigital_vpn_minio
@@ -42,6 +53,10 @@ services:
         aliases:
           - vpnminio
 
+
+  # ============================================================
+  # Django / API
+  # ============================================================
   spacedigital_vpn_django:
     build: .
     container_name: spacedigital_vpn_django
@@ -62,6 +77,50 @@ services:
     networks:
       - spacedigital_vpn_net
 
+
+  # ============================================================
+  # Telegram Bot - Long Polling Worker
+  # ============================================================
+  #
+  # This is a separate long-running process.
+  #
+  # It does NOT expose any port because Telegram does not need
+  # to connect to this container.
+  #
+  # The worker makes outbound requests:
+  #
+  #     Django container
+  #           |
+  #           | TELEGRAM_PROXY_URL
+  #           v
+  #     Telegram Bot API
+  #
+  # This avoids the inbound Telegram -> HAProxy -> Django
+  # webhook path that is currently unreliable on this server.
+  #
+  spacedigital_vpn_telegram_bot:
+    build: .
+    container_name: spacedigital_vpn_telegram_bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    command:
+      - python
+      - manage.py
+      - telegram_polling
+    depends_on:
+      - spacedigital_vpn_db
+      - spacedigital_vpn_redis
+      - spacedigital_vpn_minio
+      - spacedigital_vpn_django
+    networks:
+      - spacedigital_vpn_net
+
+
+# ================================================================
+# Volumes
+# ================================================================
+
 volumes:
   spacedigital_vpn_postgres_data:
     name: spacedigital_vpn_postgres_data
@@ -70,6 +129,11 @@ volumes:
   spacedigital_vpn_minio_data:
     name: spacedigital_vpn_minio_data
     external: true
+
+
+# ================================================================
+# Network
+# ================================================================
 
 networks:
   spacedigital_vpn_net:
