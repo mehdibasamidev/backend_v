@@ -30,10 +30,10 @@ fi
 # Register the Telegram webhook. Must re-run whenever the token or the
 # public URL changes - otherwise the bot silently receives nothing.
 # Never fatal: a webhook problem shouldn't stop the API from serving.
-if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_BASE_WEBHOOK_URL" ]; then
-  echo "🤖 Registering Telegram webhook..."
-  python manage.py telegram_set_webhook || echo "⚠️  Webhook registration failed - check TELEGRAM_* env vars"
-fi
+# if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_BASE_WEBHOOK_URL" ]; then
+#   echo "🤖 Registering Telegram webhook..."
+#   python manage.py telegram_set_webhook || echo "⚠️  Webhook registration failed - check TELEGRAM_* env vars"
+# fi
 
 # Start server (ASGI via Gunicorn + Uvicorn workers).
 # config.asgi (NOT config.wsgi): both the chat websockets and the Telegram
