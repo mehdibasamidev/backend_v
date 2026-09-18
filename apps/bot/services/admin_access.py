@@ -13,7 +13,11 @@ get_chat_member() there answers "member" - so a private chat id in the
 group setting alone can never authorise anyone.
 """
 
+import logging
+
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
 
 
 def admin_chat_ids() -> list[str]:
@@ -55,8 +59,20 @@ async def check_can_review(bot, *, chat_id, user_id) -> str | None:
     The chat is checked first so a review button forwarded or copied into
     some other chat is inert even when an admin presses it.
     """
+    def denied(reason: str, message: str) -> str:
+        # The ids are the whole diagnosis when a review is refused: whoever
+        # pressed the button cannot see why, and "not on the list" and "not
+        # an admin of the group" look identical from Telegram's side.
+        logger.warning(
+            "Review denied (%s): from_user=%s chat=%s | admin_user_ids=%s admin_group=%s",
+            reason, user_id, chat_id,
+            list(settings.TELEGRAM_ADMIN_USER_IDS),
+            settings.TELEGRAM_ADMIN_GROUP_CHAT_ID,
+        )
+        return message
+
     if not is_admin_group(chat_id) and str(chat_id) not in admin_chat_ids():
-        return "این دکمه فقط توی چت ادمین‌ها کار می‌کنه."
+        return denied("wrong chat", "این دکمه فقط توی چت ادمین‌ها کار می‌کنه.")
 
     if is_admin_user(user_id):
         return None
@@ -65,7 +81,7 @@ async def check_can_review(bot, *, chat_id, user_id) -> str | None:
         member = await bot.get_chat_member(settings.TELEGRAM_ADMIN_GROUP_CHAT_ID, user_id)
         if member.status in ("administrator", "creator"):
             return None
-        return "فقط ادمین‌های گروه می‌تونن تایید/رد کنن."
+        return denied(f"group status={member.status}", "فقط ادمین‌های گروه می‌تونن تایید/رد کنن.")
 
     # A private chat belonging to someone no longer on the admin list.
-    return "دسترسی تایید/رد نداری."
+    return denied("not on admin list", "دسترسی تایید/رد نداری.")

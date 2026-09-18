@@ -5,7 +5,7 @@ client in a separate repo (`vpn_app`) and a Telegram bot that lives inside
 this one.
 
 Python 3.11, PostgreSQL, Redis, MinIO (S3 via django-storages), Django
-Channels on ASGI, python-telegram-bot 21.
+Channels on ASGI, python-telegram-bot 22.
 
 ## Before writing code
 
@@ -39,7 +39,9 @@ apps/
 │                 username, all optional, plus an internal `identifier`
 │                 that is USERNAME_FIELD.
 ├── vpn/          plans, subscriptions, payments, 3x-ui provisioning
-├── bot/          Telegram bot (webhook, ASGI)
+├── bot/          Telegram bot. Runs as its own long-polling container;
+│                 the ASGI webhook view still exists but is not the
+│                 production path. See Running.
 ├── referral/     invite codes, redemptions, admin-controlled gating
 └── chat/         messaging, presence (Channels)
 ```
@@ -97,6 +99,26 @@ custom exception handler converts them. Views don't build error dicts.
 delta endpoints (`bulkAdjust`) over whole-object writes (`updateClient`).
 Never echo a fetched client object straight back.
 
+**Telegram** — two delivery modes for the same handlers, and only one may
+be active at a time (Telegram refuses `getUpdates` while a webhook is set):
+
+- **Long polling** — `manage.py telegram_polling`, its own container. This is
+  what production uses. It deletes the webhook on startup.
+- **Webhook** — `apps/bot/views.py`, needs ASGI and a reachable public URL.
+
+They fight: `app.sh` re-registers the webhook on every django boot when
+`TELEGRAM_BASE_WEBHOOK_URL` is set, which silently breaks a running polling
+worker. A full `docker compose up` is fine (the bot starts after django and
+deletes it again), but restarting django *alone* takes the bot down. Clear
+`TELEGRAM_BASE_WEBHOOK_URL` on a polling deployment.
+
+Who may approve a payment receipt lives in `apps/bot/services/admin_access.py`:
+`TELEGRAM_ADMIN_GROUP_CHAT_ID` (whoever is administrator/creator there) and
+`TELEGRAM_ADMIN_USER_IDS` (a comma-separated allow-list; each gets their own
+copy of the receipt in a private chat). A private chat has no admins —
+`get_chat_member` answers `member` — so a private chat id in the *group*
+setting authorises nobody. Group ids are negative; a positive id is a person.
+
 **Kavenegar** — OTP goes through `verify/lookup`, not `sms/send`; the template
 must be pre-approved in their panel. In `DEBUG` with no key the code is
 logged instead of sent.
@@ -107,14 +129,26 @@ Django view, never linked to directly.
 
 ## Running
 
+Service names are prefixed - there is no service called `django`:
+
 ```bash
-docker compose up -d --build django
-docker compose logs -f django
+docker compose up -d --build spacedigital_vpn_django
+docker compose logs -f spacedigital_vpn_django
 ```
 
-ASGI is mandatory (`gunicorn config.asgi:application -k
-uvicorn_worker.UvicornWorker`). The Telegram webhook and Channels both need
-it; under WSGI the bot silently receives nothing.
+The bot is a **separate container** running long polling, so a change to
+`apps/bot/` or to a Telegram setting needs this one restarted, not the web
+container:
+
+```bash
+docker compose up -d --build spacedigital_vpn_telegram_bot
+docker compose logs -f spacedigital_vpn_telegram_bot
+```
+
+ASGI is mandatory for the web container (`gunicorn config.asgi:application
+-k uvicorn_worker.UvicornWorker`) — Channels needs it, and so does the
+webhook view if you ever switch back to it. The polling worker is a plain
+management command and doesn't care.
 
 ## When something breaks
 

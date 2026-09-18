@@ -1,56 +1,56 @@
-services:
-  db:
-    image: postgres:15
-    container_name: vpn_db
-    hostname: db
-    networks:
-      - vpn_net
-    restart: always
-    env_file:
-      - ./.env
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+# services:
+#   db:
+#     image: postgres:15
+#     container_name: vpn_db
+#     hostname: db
+#     networks:
+#       - vpn_net
+#     restart: always
+#     env_file:
+#       - ./.env
+#     volumes:
+#       - postgres_data:/var/lib/postgresql/data
+#     ports:
+#       - "5432:5432"
 
-  minio:
-    image: minio/minio
-    container_name: vpn_minio
-    networks:
-      - vpn_net
-    env_file:
-      - ./.env
-    command: server /data --console-address ":9090"
-    volumes:
-      - minio_data:/data
-    ports:
-      - "9000:9000" # S3 API
-      - "9090:9090" # Console UI
-    restart: always
+#   minio:
+#     image: minio/minio
+#     container_name: vpn_minio
+#     networks:
+#       - vpn_net
+#     env_file:
+#       - ./.env
+#     command: server /data --console-address ":9090"
+#     volumes:
+#       - minio_data:/data
+#     ports:
+#       - "9000:9000" # S3 API
+#       - "9090:9090" # Console UI
+#     restart: always
 
-  # Django service (this would be your app container)
-  # django:
-  #   container_name: vpn_django
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile
-  #   volumes:
-  #     - .:/app
-  #   networks:
-  #     - vpn_net
-  #   ports:
-  #     - "8000:8000"
-  #   env_file:
-  #     - ./.env
-  #   depends_on:
-  #     - db
-  #     - minio
-  #   command: python manage.py runserver 0.0.0.0:8000
+#   # Django service (this would be your app container)
+#   # django:
+#   #   container_name: vpn_django
+#   #   build:
+#   #     context: .
+#   #     dockerfile: Dockerfile
+#   #   volumes:
+#   #     - .:/app
+#   #   networks:
+#   #     - vpn_net
+#   #   ports:
+#   #     - "8000:8000"
+#   #   env_file:
+#   #     - ./.env
+#   #   depends_on:
+#   #     - db
+#   #     - minio
+#   #   command: python manage.py runserver 0.0.0.0:8000
 
-volumes:
-  postgres_data:
-  minio_data:
+# volumes:
+#   postgres_data:
+#   minio_data:
 
-networks:
-  vpn_net:
-    external: true
+# networks:
+#   vpn_net:
+#     external: true
