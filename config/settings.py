@@ -242,6 +242,13 @@ TELEGRAM_WEBHOOK_SECRET = config("TELEGRAM_WEBHOOK_SECRET", default="")        #
 TELEGRAM_BASE_WEBHOOK_URL = config("TELEGRAM_BASE_WEBHOOK_URL", default="")    # https://api.yourdomain.com
 TELEGRAM_ADMIN_GROUP_CHAT_ID = config("TELEGRAM_ADMIN_GROUP_CHAT_ID", default="")
 
+# Telegram user ids allowed to approve/reject receipts, comma separated.
+# These people get their own copy of every receipt in a private chat with
+# the bot and can act on it there. A private chat has no admins, so the
+# get_chat_member() status check can never pass for one - this list is the
+# only thing that authorises review outside a real group.
+TELEGRAM_ADMIN_USER_IDS = config("TELEGRAM_ADMIN_USER_IDS", default="", cast=Csv(int))
+
 # Outbound only. Telegram reaching us is inbound and unaffected by filtering;
 # every reply the bot sends is a request FROM this server, which is the half
 # that fails from Iran.

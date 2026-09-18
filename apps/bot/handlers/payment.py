@@ -1,5 +1,6 @@
+import logging
+
 from asgiref.sync import sync_to_async
-from django.conf import settings
 from django.core.files.base import ContentFile
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
@@ -7,7 +8,10 @@ from telegram.ext import ContextTypes
 from apps.vpn.services.ai_receipt import analyze_payment_receipt
 from apps.vpn.services.checkout import create_paid_order
 from apps.bot.handlers.referral import try_handle_referral_code
+from apps.bot.services.admin_access import admin_chat_ids
 from apps.bot.services.registration import get_or_create_telegram_user
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_awaiting(action: str):
@@ -95,10 +99,10 @@ async def receive_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pass  # AI review is best-effort only - never block the flow on it
 
     await update.message.reply_text("فیش دریافت شد ✅ به‌محض تایید ادمین، سرویس فعال میشه.")
-    await _notify_admin_group(context, proof)
+    await _notify_admins(context, proof)
 
 
-async def _notify_admin_group(context: ContextTypes.DEFAULT_TYPE, proof):
+async def _notify_admins(context: ContextTypes.DEFAULT_TYPE, proof):
     def _build_caption():
         proof.refresh_from_db()
         sub = proof.subscription
@@ -122,17 +126,31 @@ async def _notify_admin_group(context: ContextTypes.DEFAULT_TYPE, proof):
         InlineKeyboardButton("❌ رد", callback_data=f"review:reject:{proof.id}"),
     ]])
 
-    if has_image:
-        image_bytes = await sync_to_async(lambda: proof.receipt_image.read())()
-        await context.bot.send_photo(
-            chat_id=settings.TELEGRAM_ADMIN_GROUP_CHAT_ID,
-            photo=image_bytes,
-            caption=caption,
-            reply_markup=keyboard,
-        )
-    else:
-        await context.bot.send_message(
-            chat_id=settings.TELEGRAM_ADMIN_GROUP_CHAT_ID,
-            text=caption,
-            reply_markup=keyboard,
-        )
+    image_bytes = await sync_to_async(lambda: proof.receipt_image.read())() if has_image else None
+
+    # After the first upload Telegram hands back a file_id for the same photo.
+    # Reusing it means the remaining admins cost one API call instead of another
+    # full upload back through the proxy.
+    photo = image_bytes
+
+    # One failing destination must not swallow the rest: an admin who never
+    # pressed /start on the bot makes send fail with "chat not found", and
+    # the receipt still has to reach everyone else.
+    for chat_id in admin_chat_ids():
+        try:
+            if photo is not None:
+                message = await context.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=photo,
+                    caption=caption,
+                    reply_markup=keyboard,
+                )
+                photo = message.photo[-1].file_id
+            else:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=caption,
+                    reply_markup=keyboard,
+                )
+        except Exception:
+            logger.exception("Could not deliver payment proof %s to chat %s", proof.id, chat_id)

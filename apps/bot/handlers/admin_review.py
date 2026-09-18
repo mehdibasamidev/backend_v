@@ -1,8 +1,8 @@
 from asgiref.sync import sync_to_async
-from django.conf import settings
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from apps.bot.services.admin_access import check_can_review
 from apps.vpn.models import PaymentProof
 from apps.vpn.models import PaymentProofKindChoices
 from apps.vpn.services.review import approve_payment_proof, reject_payment_proof
@@ -11,16 +11,15 @@ from apps.vpn.services.review import approve_payment_proof, reject_payment_proof
 async def review(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
 
-    if str(query.message.chat_id) != str(settings.TELEGRAM_ADMIN_GROUP_CHAT_ID):
-        await query.answer("این دکمه فقط توی گروه ادمین‌ها کار می‌کنه.", show_alert=True)
+    denied = await check_can_review(
+        context.bot,
+        chat_id=query.message.chat_id,
+        user_id=query.from_user.id,
+    )
+    if denied:
+        await query.answer(denied, show_alert=True)
         return
 
-    member = await context.bot.get_chat_member(settings.TELEGRAM_ADMIN_GROUP_CHAT_ID, query.from_user.id)
-    if member.status not in ("administrator", "creator"):
-        await query.answer("فقط ادمین‌های گروه می‌تونن تایید/رد کنن.", show_alert=True)
-        return
-
-    await query.answer()
     _, action, proof_id = query.data.split(":")
 
     def _load():
@@ -29,12 +28,20 @@ async def review(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         proof = await sync_to_async(_load)()
     except PaymentProof.DoesNotExist:
+        await query.answer("این فیش دیگه وجود نداره.", show_alert=True)
         await query.edit_message_reply_markup(reply_markup=None)
         return
 
+    # Every admin holds their own copy of this receipt, so the already-reviewed
+    # path is normal, not an edge case: clear the buttons on the copy that was
+    # pressed. The alert has to come before the plain answer() below - a
+    # callback query can only be answered once.
     if proof.is_approved is not None:
         await query.answer("این فیش قبلاً بررسی شده.", show_alert=True)
+        await query.edit_message_reply_markup(reply_markup=None)
         return
+
+    await query.answer()
 
     def _apply():
         if action == "approve":
