@@ -65,7 +65,7 @@ async def my_referral_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "نامحدود" if code.max_uses == 0 else f"{code.remaining_uses} بار"
     )
 
-    share_text = f"بیا پیش ما، موقع ثبت‌نام این کد رو وارد کن: {code.code}"
+    share_text = f" موقع ثبت نام این کد رو وارد کن: \n {code.code}  \n یا \n https://t.me/{context.bot.username}?start={code.code}"
 
     await update.message.reply_text(
         f"🎁 کد دعوت تو:\n\n`{code.code}`\n\n"
@@ -78,6 +78,7 @@ async def my_referral_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 # Telegram's own share sheet - no deep link needed, and it
                 # works from inside the chat.
                 url=f"https://t.me/share/url?url={share_text}",
+                text="sample text",
             )
         ]]),
     )
