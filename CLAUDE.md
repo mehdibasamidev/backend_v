@@ -106,11 +106,11 @@ be active at a time (Telegram refuses `getUpdates` while a webhook is set):
   what production uses. It deletes the webhook on startup.
 - **Webhook** — `apps/bot/views.py`, needs ASGI and a reachable public URL.
 
-They fight: `app.sh` re-registers the webhook on every django boot when
-`TELEGRAM_BASE_WEBHOOK_URL` is set, which silently breaks a running polling
-worker. A full `docker compose up` is fine (the bot starts after django and
-deletes it again), but restarting django *alone* takes the bot down. Clear
-`TELEGRAM_BASE_WEBHOOK_URL` on a polling deployment.
+They fight. `app.sh` used to call `telegram_set_webhook` on every django
+boot, which silently broke the running polling worker; that call is now
+commented out. Re-enabling it means stopping the polling container in the
+same change - a registered webhook makes `getUpdates` return 409, and the
+bot goes quiet with no error anywhere near the button that stopped working.
 
 Who may approve a payment receipt lives in `apps/bot/services/admin_access.py`:
 `TELEGRAM_ADMIN_GROUP_CHAT_ID` (whoever is administrator/creator there) and
@@ -144,6 +144,12 @@ container:
 docker compose up -d --build spacedigital_vpn_telegram_bot
 docker compose logs -f spacedigital_vpn_telegram_bot
 ```
+
+The production database is named **`fitness_db`**, not `vpn_db` or `db` -
+the server's volume was initialised under that name and postgres only
+creates `POSTGRES_DB` on an empty volume, so renaming it in `.env` does not
+create it, it just makes every container fail with `database "db" does not
+exist` and leaves `app.sh` looping in its wait-for-postgres check.
 
 ASGI is mandatory for the web container (`gunicorn config.asgi:application
 -k uvicorn_worker.UvicornWorker`) — Channels needs it, and so does the
