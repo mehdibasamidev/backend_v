@@ -78,7 +78,7 @@ async def my_referral_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 # Telegram's own share sheet - no deep link needed, and it
                 # works from inside the chat.
                 url=f"https://t.me/share/url?url={share_text}",
-                text="sample text",
-            )
+                copy_text=share_text
+                )
         ]]),
     )
