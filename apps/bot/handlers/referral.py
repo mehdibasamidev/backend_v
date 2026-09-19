@@ -1,7 +1,7 @@
 from asgiref.sync import sync_to_async
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
-
+from urllib.parse import urlencode
 from apps.bot.services.keyboards import main_menu_keyboard
 from apps.bot.services.registration import (
     get_or_create_telegram_user,
@@ -77,13 +77,17 @@ async def my_referral_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "نامحدود" if code.max_uses == 0 else f"{code.remaining_uses} بار"
     )
     referral_link = f"https://t.me/{context.bot.username}?start={code.code}"
-    share_text = f" برای خرید و استفاده از سرویس موقع ثبت نام این کد رو وارد کن: \n\n {code.code}  \n\n یا لینک زیر رو بزن که خودش مستقیم وارد کنه \n {referral_link}"
+    share_text = f" برای خرید و استفاده از سرویس موقع ثبت نام این کد رو وارد کن: \n\n `{code.code}`  \n\n یا لینک زیر رو بزن که خودش مستقیم وارد کنه "
+    share_url = "https://t.me/share/url?" + urlencode({
+        "url": referral_link,
+        "text": share_text,
 
+    })
     keyboard = InlineKeyboardMarkup([
         [
             InlineKeyboardButton(
                 "📤 اشتراک‌گذاری",
-                url=f"https://t.me/share/url?url={share_text}",
+                url=share_url,
             )
         ],
         [
