@@ -76,8 +76,8 @@ async def my_referral_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     remaining = (
         "نامحدود" if code.max_uses == 0 else f"{code.remaining_uses} بار"
     )
-
-    share_text = f" برای خرید و استفاده از سرویس موقع ثبت نام این کد رو وارد کن: \n\n `{code.code}`  \n\n یا لینک زیر رو بزن که خودش مستقیم وارد کنه \n https://t.me/{context.bot.username}?start={code.code}"
+    referral_link = f"https://t.me/{context.bot.username}?start={code.code}"
+    share_text = f" برای خرید و استفاده از سرویس موقع ثبت نام این کد رو وارد کن: \n\n {code.code}  \n\n یا لینک زیر رو بزن که خودش مستقیم وارد کنه \n {referral_link}"
 
     keyboard = InlineKeyboardMarkup([
         [
