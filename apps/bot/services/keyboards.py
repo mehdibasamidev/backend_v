@@ -16,7 +16,7 @@ def main_menu_keyboard():
         [InlineKeyboardButton("🛒 خرید سرویس", callback_data="menu:plans")],
         [InlineKeyboardButton("🧩 پلن سفارشی", callback_data="custom:start")],
         [InlineKeyboardButton("📦 سرویس‌های من", callback_data="menu:subscriptions")],
-        [InlineKeyboardButton("🧑‍🧑‍🧒 معرفی به دوستان", callback_data="menu:referral")],
+        [InlineKeyboardButton("🎁 کد دعوت من", callback_data="menu:referral")],
     ])
 
 

@@ -184,6 +184,17 @@ def build_application(*, for_polling: bool = False) -> Application:
     )
 
     # ------------------------------------------------------------------
+    # Referral
+    # ------------------------------------------------------------------
+
+    application.add_handler(
+            CallbackQueryHandler(
+                referral.my_referral_code,
+                pattern=r"^menu:referral$",
+            )
+        )
+
+    # ------------------------------------------------------------------
     # Payment receipt / normal text messages
     # ------------------------------------------------------------------
     #
