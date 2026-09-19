@@ -47,38 +47,69 @@ async def try_handle_referral_code(update: Update, context: ContextTypes.DEFAULT
 
 
 async def my_referral_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/mycode - the caller's own invite code, with a share button."""
+    """Show the caller's own invite code, with a share button."""
+
+    if update.callback_query:
+        await update.callback_query.answer()
+
     profile = await sync_to_async(get_or_create_telegram_user)(
         update.effective_user
     )
+
     if profile is None:
-        await update.message.reply_text("اول باید ثبت‌نام کنی. /start رو بزن.")
+        text = "اول باید ثبت‌نام کنی. /start رو بزن."
+        if update.callback_query:
+            await update.callback_query.edit_message_text(text)
+        else:
+            await update.message.reply_text(text)
         return
 
     try:
         code = await sync_to_async(get_or_create_personal_code)(profile.user)
     except AppException as exc:
-        await update.message.reply_text(exc.message)
+        if update.callback_query:
+            await update.callback_query.edit_message_text(exc.message)
+        else:
+            await update.message.reply_text(exc.message)
         return
 
     remaining = (
         "نامحدود" if code.max_uses == 0 else f"{code.remaining_uses} بار"
     )
 
-    share_text = f" برای خرید و استفاده از سرویس موقع ثبت نام این کد رو وارد کن: \n {code.code}  \n یا لینک زیر رو بزن که خودش مستقیم وارد کنه \n https://t.me/{context.bot.username}?start={code.code}"
+    share_text = f" برای خرید و استفاده از سرویس موقع ثبت نام این کد رو وارد کن: \n\n `{code.code}`  \n\n یا لینک زیر رو بزن که خودش مستقیم وارد کنه \n https://t.me/{context.bot.username}?start={code.code}"
 
-    await update.message.reply_text(
-        f"🎁 کد دعوت تو:\n\n`{code.code}`\n\n"
-        f"تا حالا {code.used_count} نفر باهاش ثبت‌نام کردن.\n"
-        f"باقی‌مانده: {remaining}",
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup([[
+    keyboard = InlineKeyboardMarkup([
+        [
             InlineKeyboardButton(
                 "📤 اشتراک‌گذاری",
-                # Telegram's own share sheet - no deep link needed, and it
-                # works from inside the chat.
                 url=f"https://t.me/share/url?url={share_text}",
-                copy_text=share_text
-                )
-        ]]),
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "⬅️ برگشت",
+                callback_data="menu:main",
+            )
+        ],
+    ])
+
+    text = (
+        f"🎁 کد دعوت تو:\n\n"
+        f"`{code.code}`\n\n"
+        f"تا حالا {code.used_count} نفر باهاش ثبت‌نام کردن.\n"
+        f"باقی‌مانده: {remaining}"
     )
+
+    if update.callback_query:
+        await update.callback_query.edit_message_text(
+            text,
+            parse_mode="Markdown",
+            reply_markup=keyboard,
+        )
+    else:
+        await update.message.reply_text(
+            text,
+            parse_mode="Markdown",
+            reply_markup=keyboard,
+        )
