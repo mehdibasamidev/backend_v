@@ -2,7 +2,7 @@ from asgiref.sync import sync_to_async
 from django.conf import settings
 from telegram import Update
 from telegram.ext import ContextTypes
-
+from apps.bot.services.formatting import fa_price
 from apps.vpn.models import VpnPlan
 from apps.bot.services.registration import get_or_create_telegram_user
 from apps.bot.services.keyboards import plans_list_keyboard, plan_detail_keyboard
@@ -36,7 +36,7 @@ async def show_plan_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"حجم: {volume_text}\n"
         f"مدت: {plan.duration_days} روز\n"
         f"کاربر همزمان: {users_text}\n"
-        f"قیمت: {plan.price} تومان"
+        f"قیمت: {fa_price(plan.price)}"
     )
     await query.edit_message_text(text, reply_markup=plan_detail_keyboard(plan.id))
 
@@ -77,7 +77,7 @@ async def buy_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = (
         f"📦 {plan.name}\n"
-        f"مبلغ قابل پرداخت: {plan.price} تومان\n\n"
+        f"مبلغ قابل پرداخت: {fa_price(plan.price)}\n\n"
         f"لطفاً این مبلغ رو کارت‌به‌کارت کن:\n"
         f"شماره کارت: {settings.PAYMENT_CARD_NUMBER}\n"
         f"به نام: {settings.PAYMENT_CARD_HOLDER}\n\n"

@@ -1,5 +1,5 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-
+from apps.bot.services.formatting import fa_price
 from apps.vpn.models import VpnPlan
 from apps.vpn.services.pricing import calculate_custom_plan_price
 
@@ -22,7 +22,7 @@ def main_menu_keyboard():
 
 def plans_list_keyboard():
     buttons = [
-        [InlineKeyboardButton(f"{plan.name} - {plan.price} تومان", callback_data=f"plan:view:{plan.id}")]
+        [InlineKeyboardButton(f"{plan.name} - {fa_price(plan.price)}", callback_data=f"plan:view:{plan.id}")]
         for plan in VpnPlan.objects.filter(is_active=True)
     ]
     buttons.append([InlineKeyboardButton("⬅️ برگشت", callback_data="menu:main")])
@@ -43,7 +43,7 @@ def _encode(gb, days, users):
 def custom_plan_text(gb, days, users):
     try:
         price = calculate_custom_plan_price(gb, days, users)
-        price_line = f"قیمت: {price} تومان"
+        price_line = f"قیمت: {fa_price(price)}"
     except Exception as e:
         price_line = f"⚠️ {e}"
     users_text = "بدون محدودیت" if users == 0 else str(users)
