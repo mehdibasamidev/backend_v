@@ -77,10 +77,10 @@ async def my_referral_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "نامحدود" if code.max_uses == 0 else f"{code.remaining_uses} بار"
     )
     referral_link = f"https://t.me/{context.bot.username}?start={code.code}"
-    share_text = f" برای خرید و استفاده از سرویس موقع ثبت نام این کد رو وارد کن: \n\n `{code.code}`  \n\n یا لینک زیر رو بزن که خودش مستقیم وارد کنه "
+    # share_text = f" برای خرید و استفاده از سرویس موقع ثبت نام این کد رو وارد کن: \n\n `{code.code}`  \n\n یا لینک زیر رو بزن که خودش مستقیم وارد کنه "
     share_url = "https://t.me/share/url?" + urlencode({
         "url": referral_link,
-        "text": share_text,
+        # "text": share_text,
 
     })
     keyboard = InlineKeyboardMarkup([
