@@ -65,7 +65,7 @@ async def my_referral_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "نامحدود" if code.max_uses == 0 else f"{code.remaining_uses} بار"
     )
 
-    share_text = f" موقع ثبت نام این کد رو وارد کن: \n {code.code}  \n یا \n https://t.me/{context.bot.username}?start={code.code}"
+    share_text = f" برای خرید و استفاده از سرویس موقع ثبت نام این کد رو وارد کن: \n {code.code}  \n یا لینک زیر رو بزن که خودش مستقیم وارد کنه \n https://t.me/{context.bot.username}?start={code.code}"
 
     await update.message.reply_text(
         f"🎁 کد دعوت تو:\n\n`{code.code}`\n\n"
