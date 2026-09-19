@@ -12,28 +12,34 @@ from apps.referral.services.redemption import get_or_create_personal_code
 from config.utils.exceptions import AppException
 
 
-async def try_handle_referral_code(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+async def try_handle_referral_code(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> bool:
     """
-    Consumes a plain text message as an invite code, if that's what this
-    person was asked for.
+    Consumes an invite code from either:
+    - a plain text message
+    - a Telegram deep-link: /start CODE
 
-    Returns True when the message was handled here - the caller must stop,
-    or the same text would also be read as a payment receipt. Returns False
-    to let other text handlers have it.
+    Returns True when the referral flow handled the message.
     """
     telegram_user = update.effective_user
 
     if not await sync_to_async(needs_referral_code)(telegram_user.id):
         return False
 
-    raw_code = (update.message.text or "").strip()
+    # Deep-link: /start CENVPGKY
+    if context.args:
+        raw_code = context.args[0].strip()
+    else:
+        raw_code = (update.message.text or "").strip()
+
     ok, result = await sync_to_async(submit_referral_code)(
-        telegram_user, raw_code
+        telegram_user,
+        raw_code,
     )
 
     if not ok:
-        # Re-prompt rather than dropping them out of the flow: the
-        # alternative is making someone type /start again over a typo.
         await update.message.reply_text(
             f"❌ {result}\n\nیه کد دیگه امتحان کن."
         )

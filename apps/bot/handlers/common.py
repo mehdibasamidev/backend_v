@@ -1,7 +1,7 @@
 from asgiref.sync import sync_to_async
 from telegram import Update
 from telegram.ext import ContextTypes
-
+from apps.bot.handlers.referral import try_handle_referral_code
 from apps.bot.services.keyboards import main_menu_keyboard
 from apps.bot.services.registration import (
     begin_referral_prompt,
@@ -10,8 +10,17 @@ from apps.bot.services.registration import (
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if context.args:
+
+        handled = await try_handle_referral_code(update, context)
+
+        if handled:
+
+            return
     profile = await sync_to_async(get_or_create_telegram_user)(
+
         update.effective_user
+
     )
 
     # None means invite codes are required and this person doesn't have an
