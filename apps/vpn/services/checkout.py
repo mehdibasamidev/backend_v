@@ -5,6 +5,7 @@ from apps.vpn.models import (
     UserVpnSubscription,
     PaymentProof,
     PaymentProofKindChoices,
+    PaymentProofSourceChoices,
     PlanSourceChoices,
     SubscriptionStatusChoices,
 )
@@ -22,6 +23,7 @@ def create_paid_order(
     label="",
     receipt_image=None,
     receipt_text="",
+    source=PaymentProofSourceChoices.APP,
 ):
     """
     Creates a subscription together with its payment proof, in one atomic
@@ -30,6 +32,9 @@ def create_paid_order(
 
     Price is always recalculated here, server-side; whatever the client
     displayed while the user was choosing was only a preview.
+
+    `source` is where the receipt came from (app or bot), stored on the
+    proof for the admin announcement.
 
     Returns (subscription, payment_proof).
     """
@@ -74,5 +79,6 @@ def create_paid_order(
         amount=subscription.price,
         receipt_image=receipt_image,
         receipt_text=receipt_text,
+        source=source,
     )
     return subscription, proof

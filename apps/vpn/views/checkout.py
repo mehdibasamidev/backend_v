@@ -9,6 +9,7 @@ from apps.vpn.models import (
     UserVpnSubscription,
     PaymentProof,
     PaymentProofKindChoices,
+    PaymentProofSourceChoices,
 )
 from apps.vpn.serializers.subscriptions import UserVpnSubscriptionSerializer
 from apps.vpn.services.ai_receipt import analyze_payment_receipt
@@ -93,6 +94,7 @@ class CheckoutView(APIView):
                 label=data.get("label", ""),
                 receipt_image=data.get("receipt_image"),
                 receipt_text=data.get("receipt_text", ""),
+                source=PaymentProofSourceChoices.APP,
             )
         except AppException as e:
             return BadRequestResponse(message=e.message)
@@ -101,6 +103,7 @@ class CheckoutView(APIView):
 
         # Best-effort only, and deliberately outside the transaction so a
         # slow/failing AI call can never roll back a real order.
+        # The bot container announces this proof to the admins (outbox).
         try:
             analyze_payment_receipt(proof)
         except Exception:
@@ -214,10 +217,12 @@ class RenewSubscriptionView(APIView):
                 extra_gb=extra_gb,
                 receipt_image=data.get("receipt_image"),
                 receipt_text=data.get("receipt_text", ""),
+                source=PaymentProofSourceChoices.APP,
             )
         except Exception as e:
             return ServerErrorResponse(errors=str(e))
 
+        # The bot container announces this proof to the admins (outbox).
         try:
             analyze_payment_receipt(proof)
         except Exception:

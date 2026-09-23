@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from apps.bot.models import TelegramProfile
+from apps.bot.models import TelegramAuthRequest, TelegramProfile
 
 
 class RegistrationStatusFilter(admin.SimpleListFilter):
@@ -54,3 +54,48 @@ class TelegramProfileAdmin(admin.ModelAdmin):
     @admin.display(boolean=True, description="Registered")
     def is_registered(self, obj):
         return obj.user_id is not None
+
+
+@admin.register(TelegramAuthRequest)
+class TelegramAuthRequestAdmin(admin.ModelAdmin):
+    """
+    "Login with Telegram" / "Connect Telegram" attempts, for answering "why
+    did my services move" or "who signed in as me". Read-only: this is
+    evidence. Confirmed links (with the merged account, when there was one)
+    and used logins are kept; attempts that never went through are purged
+    a day after they were created.
+    """
+    list_display = (
+        "created_at",
+        "purpose",
+        "status_display",
+        "user",
+        "telegram_user_id",
+        "moved_subscriptions",
+        "failure_reason",
+    )
+    list_filter = ("purpose", "status")
+    search_fields = (
+        "id",
+        "telegram_user_id",
+        "opened_by_telegram_id",
+        "user__email",
+        "user__phone_number",
+        "user__username",
+    )
+    # The code and the two hashes are only meaningful to the flow itself.
+    exclude = ("start_token_hash", "poll_secret_hash", "code")
+
+    @admin.display(description="Status")
+    def status_display(self, obj):
+        # Shows "expired" for a pending row past its TTL, as the app sees it.
+        return obj.effective_status
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

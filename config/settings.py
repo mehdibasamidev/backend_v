@@ -226,7 +226,9 @@ PAYMENT_CARD_HOLDER = config("PAYMENT_CARD_HOLDER", default="N/V")
 # X-UI Panel Information
 XUI_PANEL_BASE_URL = config("XUI_PANEL_BASE_URL", default="http://localhost:8080")
 XUI_API_TOKEN = config("XUI_API_TOKEN", default="")
-XUI_DEFAULT_INBOUND_IDS = config("XUI_DEFAULT_INBOUND_IDS", default="")
+# Which inbounds a client is created on is no longer a setting: see
+# InboundGroup (admin panel "Inbounds" tab). XUI_DEFAULT_INBOUND_IDS is read
+# once, by vpn migration 0005, to seed the default group.
 XUI_SUBSCRIPTION_BASE_URL = config("XUI_SUBSCRIPTION_BASE_URL", default="")
 
 # ---------- Lazy sync ----------
@@ -253,6 +255,12 @@ TELEGRAM_ADMIN_USER_IDS = config("TELEGRAM_ADMIN_USER_IDS", default="", cast=Csv
 # every reply the bot sends is a request FROM this server, which is the half
 # that fails from Iran.
 TELEGRAM_PROXY_URL = config("TELEGRAM_PROXY_URL", default="")
+
+# The bot's @username, without the "@" (stripped here if pasted with it).
+# "Login with Telegram" and "Connect Telegram" build t.me deep links from it
+# and answer 400 while it is empty. The web container can't ask Telegram for
+# it (it never talks to Telegram), so it has to be configured.
+TELEGRAM_BOT_USERNAME = config("TELEGRAM_BOT_USERNAME", default="").strip().lstrip("@")
 
 # --- optional AI receipt pre-check (no-ops when unset) ---
 ANTHROPIC_API_KEY = config("ANTHROPIC_API_KEY", default="")  # اختیاری، فقط برای بررسی AI فیش

@@ -15,14 +15,13 @@ from apps.account.serializers.auth import (
     PhoneStartSerializer,
     PhoneVerifySerializer,
 )
-from apps.account.serializers.profile import UserInfoSerializer
 from apps.account.services.otp import send_otp, verify_otp
 from apps.account.services.registration import (
     create_email_user,
     create_phone_user,
     email_otp_required,
 )
-from apps.account.services.session import issue_session
+from apps.account.services.session import auth_payload
 from apps.referral.services.redemption import (
     redeem,
     referral_required,
@@ -52,10 +51,6 @@ def _consume_referral(code, user):
         redeem(code, user)
     except Exception:
         logger.exception("Could not record referral %s for user %s", code, user.id)
-
-
-def _auth_payload(user):
-    return {**issue_session(user), "user": UserInfoSerializer(user).data}
 
 
 class PhoneRegisterStartView(APIView):
@@ -149,7 +144,7 @@ class PhoneVerifyView(APIView):
             user.save(update_fields=["is_phone_verified"])
 
         return SuccessResponse(
-            data=_auth_payload(user),
+            data=auth_payload(user),
             message="Signed in successfully.",
         )
 
@@ -183,7 +178,7 @@ class EmailRegisterView(APIView):
             user = create_email_user(email, raw_password=password, verified=False)
             _consume_referral(referral_code, user)
             return SuccessResponse(
-                data=_auth_payload(user),
+                data=auth_payload(user),
                 message="Account created.",
             )
 
@@ -235,6 +230,6 @@ class EmailVerifyView(APIView):
         )
         _consume_referral(otp.payload.get("referral_code", ""), user)
         return SuccessResponse(
-            data=_auth_payload(user),
+            data=auth_payload(user),
             message="Account created and email verified.",
         )

@@ -1,9 +1,12 @@
 import asyncio
+import contextlib
 import logging
+import signal
 
 from django.core.management.base import BaseCommand
 
 from apps.bot.services.bot_app import build_application
+from apps.bot.services.proof_notifier import run_proof_notifier
 
 
 logger = logging.getLogger("apps")
@@ -88,16 +91,41 @@ class Command(BaseCommand):
                 timeout=30,
             )
 
+            # Posts receipts submitted in the app to the admins. It lives
+            # here, not in the web container, because this is the process
+            # that owns the Telegram connection. Webhook mode has no
+            # equivalent, so app receipts are only announced while polling.
+            notifier = asyncio.create_task(
+                run_proof_notifier(application.bot)
+            )
+
+            # docker-compose starts this command in exec form, so Python
+            # is PID 1, and the kernel drops a SIGTERM that PID 1 has no
+            # handler for: `docker stop` would wait out its 10 seconds and
+            # SIGKILL, and the finally below would never run. That finally
+            # is what lets the notifier hand back a receipt it was halfway
+            # through posting. (SIGINT / Ctrl+C is already turned into a
+            # cancellation by asyncio.run.)
+            stop = asyncio.Event()
+            with contextlib.suppress(NotImplementedError):  # Windows
+                asyncio.get_running_loop().add_signal_handler(
+                    signal.SIGTERM, stop.set
+                )
+
             try:
-                # Keep this process alive indefinitely.
+                # Keep this process alive until docker stops it.
                 #
-                # Docker will restart the process if it exits,
-                # because the telegram_bot service will use:
+                # Docker will restart the process if it exits
+                # on its own, because the telegram_bot service uses:
                 #
                 # restart: unless-stopped
-                await asyncio.Event().wait()
+                await stop.wait()
 
             finally:
+                notifier.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await notifier
+
                 # Stop polling cleanly when the process receives
                 # a shutdown signal.
                 await application.updater.stop()

@@ -18,6 +18,7 @@ from apps.bot.handlers import (
     payment,
     admin_review,
     referral,
+    telegram_auth,
 )
 
 
@@ -193,6 +194,18 @@ def build_application(*, for_polling: bool = False) -> Application:
                 pattern=r"^menu:referral$",
             )
         )
+
+    # ------------------------------------------------------------------
+    # Login with Telegram / Connect Telegram (the code buttons; the deep
+    # link itself arrives through /start above)
+    # ------------------------------------------------------------------
+
+    application.add_handler(
+        CallbackQueryHandler(
+            telegram_auth.handle_auth_callback,
+            pattern=r"^tga:",
+        )
+    )
 
     # ------------------------------------------------------------------
     # Payment receipt / normal text messages

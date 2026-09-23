@@ -4,8 +4,10 @@ from decimal import Decimal
 
 from django.conf import settings
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 
+from config.utils.exceptions import AppException
 from config.utils.storages import PrivateMediaStorage
 
 
@@ -25,6 +27,74 @@ class SubscriptionStatusChoices(models.TextChoices):
     CANCELLED = "cancelled", "Cancelled"
 
 
+class XuiInbound(models.Model):
+    """
+    Local mirror of one inbound on the 3x-ui panel, refreshed by
+    services.inbounds.sync_inbounds_from_panel(). It exists so plans can
+    point at named groups of servers instead of raw panel ids.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    panel_id = models.PositiveIntegerField(unique=True, help_text="The inbound's id on the 3x-ui panel")
+    remark = models.CharField(max_length=200, blank=True)
+    protocol = models.CharField(max_length=32, blank=True)
+    port = models.PositiveIntegerField(null=True, blank=True)
+    is_enabled_on_panel = models.BooleanField(default=True)
+    # A sync never deletes rows: groups reference them, and the admin has
+    # to be able to see which group just lost a server.
+    exists_on_panel = models.BooleanField(
+        default=True,
+        help_text="False when the latest sync did not return this inbound",
+    )
+    last_synced_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["panel_id"]
+        verbose_name = "3x-ui inbound"
+
+    def __str__(self):
+        label = f"#{self.panel_id} {self.remark or '(no remark)'}"
+        return label if self.exists_on_panel else f"{label} [missing on panel]"
+
+
+class InboundGroup(models.Model):
+    """
+    A named set of panel inbounds a new client is created on, e.g.
+    "Europe". Exactly one group is the default: custom plans, and fixed
+    plans without a group of their own, provision onto it.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=100, unique=True)
+    inbounds = models.ManyToManyField(XuiInbound, related_name="groups", blank=True)
+    is_default = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-is_default", "name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["is_default"],
+                condition=Q(is_default=True),
+                name="vpn_single_default_inbound_group",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.name} (default)" if self.is_default else self.name
+
+    @classmethod
+    def get_default(cls):
+        group = cls.objects.filter(is_default=True).first()
+        if group is None:
+            raise AppException(
+                "No default inbound group is set. Mark one group as the default "
+                "in the admin panel (Inbounds tab) and approve again."
+            )
+        return group
+
+
 class VpnPlan(models.Model):
     """
     Admin-defined fixed plan, e.g. "30GB / 30 Days / 2 concurrent users".
@@ -39,6 +109,14 @@ class VpnPlan(models.Model):
     is_active = models.BooleanField(default=True)
     is_featured = models.BooleanField(default=False)
     order = models.PositiveIntegerField(default=0, help_text="Display order")
+    inbound_group = models.ForeignKey(
+        InboundGroup,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="plans",
+        help_text="Inbounds a purchase of this plan is created on. Empty = the default group.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -254,6 +332,11 @@ class PaymentProofKindChoices(models.TextChoices):
     RENEWAL = "renewal", "Renewal / Top-up"
 
 
+class PaymentProofSourceChoices(models.TextChoices):
+    APP = "app", "App"
+    BOT = "bot", "Telegram bot"
+
+
 class PaymentProof(models.Model):
     """
     Manual card-to-card payment proof submitted by the user.
@@ -273,6 +356,15 @@ class PaymentProof(models.Model):
         max_length=10,
         choices=PaymentProofKindChoices.choices,
         default=PaymentProofKindChoices.PURCHASE,
+    )
+    # Where the receipt was submitted, recorded by the caller. Not derived
+    # from the buyer having a TelegramProfile: once an app account can be
+    # connected to Telegram, its app receipts would read as bot ones.
+    # (Unrelated to UserVpnSubscription.source, which is fixed vs custom.)
+    source = models.CharField(
+        max_length=10,
+        choices=PaymentProofSourceChoices.choices,
+        default=PaymentProofSourceChoices.APP,
     )
     amount = models.DecimalField(
         max_digits=12, decimal_places=2,
@@ -310,10 +402,26 @@ class PaymentProof(models.Model):
     reviewed_at = models.DateTimeField(null=True, blank=True)
     admin_note = models.TextField(blank=True)
 
+    # Outbox for the Telegram announcement. The web container never talks
+    # to Telegram; the bot container polls for pending proofs with this
+    # unset and claims each one by setting it (apps/bot/services/proof_notifier.py).
+    admin_notified_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the receipt was posted to the Telegram admins. Empty = not announced yet.",
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(
+                fields=["created_at"],
+                condition=Q(admin_notified_at__isnull=True),
+                name="vpn_proof_unannounced_idx",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.kind} proof for {self.subscription_id} (approved={self.is_approved})"

@@ -1,5 +1,7 @@
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from apps.account.serializers.profile import UserInfoSerializer
+
 
 def issue_session(user):
     """
@@ -13,3 +15,12 @@ def issue_session(user):
         "access_token": str(refresh.access_token),
         "refresh_token": str(refresh),
     }
+
+
+def auth_payload(user):
+    """
+    Tokens plus the user, the body a sign-in returns. A service rather than
+    a view helper because "Login with Telegram" (apps/bot) hands out the
+    same session and must not grow its own copy of the shape.
+    """
+    return {**issue_session(user), "user": UserInfoSerializer(user).data}

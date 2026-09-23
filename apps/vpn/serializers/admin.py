@@ -1,10 +1,12 @@
 from rest_framework import serializers
 
 from apps.vpn.models import (
+    InboundGroup,
     VpnPlan,
     VpnPricingConfig,
     UserVpnSubscription,
     PaymentProof,
+    XuiInbound,
 )
 
 
@@ -12,12 +14,24 @@ class AdminVpnPlanSerializer(serializers.ModelSerializer):
     """Full read/write access - unlike the public serializer this exposes
     is_active and order so admins can manage the catalogue."""
 
+    # null = the default group, resolved at approval time.
+    inbound_group = serializers.PrimaryKeyRelatedField(
+        queryset=InboundGroup.objects.all(), allow_null=True, required=False,
+    )
+    # allow_null, not default=None: DRF skips a field's default on partial
+    # updates, which dropped this key from PATCH responses for plans on
+    # the default group.
+    inbound_group_name = serializers.CharField(
+        source="inbound_group.name", read_only=True, allow_null=True,
+    )
+
     class Meta:
         model = VpnPlan
         fields = [
             "id", "name", "description",
             "volume_gb", "duration_days", "max_concurrent_users",
             "price", "is_active", "is_featured", "order",
+            "inbound_group", "inbound_group_name",
             "created_at", "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
@@ -66,6 +80,66 @@ class AdminPricingConfigSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"gb_step": "gb_step must be greater than zero."})
 
         return attrs
+
+
+class AdminXuiInboundSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = XuiInbound
+        fields = [
+            "id", "panel_id", "remark", "protocol", "port",
+            "is_enabled_on_panel", "exists_on_panel", "last_synced_at",
+        ]
+        read_only_fields = fields
+
+
+class AdminInboundGroupSerializer(serializers.ModelSerializer):
+    """
+    Groups are written with PANEL inbound ids (what the admin sees on 3x-ui),
+    not our row uuids. Any mirrored inbound is accepted, including one the
+    last sync flagged missing, so re-saving a group that lost a server
+    doesn't fail - provisioning skips missing ones anyway.
+
+    Expects the queryset from services.inbounds.inbound_groups_with_details()
+    so the list endpoint stays at a fixed number of queries.
+    """
+    name = serializers.CharField(max_length=100)
+    is_default = serializers.BooleanField(required=False)
+    inbound_ids = serializers.SlugRelatedField(
+        source="inbounds",
+        slug_field="panel_id",
+        many=True,
+        allow_empty=False,
+        queryset=XuiInbound.objects.all(),
+    )
+    inbounds = AdminXuiInboundSerializer(many=True, read_only=True)
+    plan_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = InboundGroup
+        fields = [
+            "id", "name", "is_default", "inbound_ids", "inbounds",
+            "plan_count", "created_at", "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+    def get_plan_count(self, obj):
+        count = getattr(obj, "plan_count", None)
+        return obj.plans.count() if count is None else count
+
+    def validate_name(self, value):
+        qs = InboundGroup.objects.filter(name__iexact=value)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError("A group with this name already exists.")
+        return value
+
+    def validate_is_default(self, value):
+        # There must always be a default - custom plans have no group of
+        # their own - so it can only be moved, never switched off.
+        if value is False and self.instance is not None and self.instance.is_default:
+            raise serializers.ValidationError("Make another group the default instead.")
+        return value
 
 
 class AdminUserBriefSerializer(serializers.Serializer):

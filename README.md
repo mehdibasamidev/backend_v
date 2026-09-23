@@ -175,6 +175,8 @@ PAYMENT_CARD_HOLDER=<account-holder>
 # 3x-ui / X-UI
 XUI_PANEL_BASE_URL=https://panel.example.com/<panel-path>/
 XUI_API_TOKEN=<x-ui-api-token>
+# Read once by migration vpn 0005 to seed the default inbound group; delete
+# it after that migration has run (see the notes below).
 XUI_DEFAULT_INBOUND_IDS=<comma-separated-inbound-ids>
 XUI_SUBSCRIPTION_BASE_URL=https://subscriptions.example.com/<path>
 
@@ -183,6 +185,8 @@ TELEGRAM_BOT_TOKEN=
 TELEGRAM_WEBHOOK_SECRET=<random-32-plus-character-secret>
 TELEGRAM_BASE_WEBHOOK_URL=https://api.example.com
 TELEGRAM_ADMIN_GROUP_CHAT_ID=
+# The bot's @username without the "@", e.g. SpaceDigitalVpnBot
+TELEGRAM_BOT_USERNAME=
 
 # Optional integrations
 ANTHROPIC_API_KEY=
@@ -201,6 +205,22 @@ Notes:
 - The code reads KAVENEGAR_OTP_TEMPLATE, not KAVENEGAR_TEMPLATE_NAME found in
   the old example file.
 - Do not set DEBUG=True on the VPS.
+- TELEGRAM_BOT_USERNAME is the bot's @username (a leading "@" is stripped).
+  The app's "Login with Telegram" and "Connect Telegram" send people to
+  https://t.me/<username>?start=... and both answer 400 until it is set. The
+  web container needs it too, not only the bot container: it builds the link.
+- Connecting Telegram to an app account can merge a Telegram-only bot account
+  into it; the bot account is then deactivated (is_active=False, never
+  deleted). SimpleJWT rejects a deactivated user's tokens because its
+  CHECK_USER_IS_ACTIVE defaults to True - keep it that way in SIMPLE_JWT.
+- XUI_DEFAULT_INBOUND_IDS is no longer a setting. Migration vpn 0005 reads it
+  once to create the "Default" inbound group, and the variable can be deleted
+  from .env after that migration has run. From then on, inbounds and groups
+  are managed in the Flutter admin panel ("Inbounds" tab) or in the Django
+  admin: sync the inbound list from the panel, build groups such as "Europe"
+  or "Asia", and pick a group per fixed plan. Custom plans, and fixed plans
+  without a group, use the default group. To refresh the list from the shell:
+  docker compose exec spacedigital_vpn_django python manage.py sync_xui_inbounds
 - Current settings hard-code CSRF_TRUSTED_ORIGINS and AWS_S3_CUSTOM_DOMAIN for
   existing domains. Before deploying a different domain, update
   config/settings.py: set the CSRF origin to https://api.example.com and the
@@ -354,6 +374,24 @@ git pull --ff-only origin main
 docker compose up -d --build
 docker compose logs --tail=100 django
 ~~~
+
+Once, for the update that adds vpn migrations 0004-0006 (inbound groups and
+the Telegram receipt outbox), replace the plain `docker compose up -d --build`
+above with this order. The old bot would otherwise keep posting receipts
+without marking them announced, and the new bot would post them a second time:
+
+~~~bash
+docker compose stop spacedigital_vpn_telegram_bot
+docker compose up -d --build spacedigital_vpn_django
+docker compose logs -f spacedigital_vpn_django   # wait for "Starting Gunicorn": migrations are done
+docker compose up -d --build spacedigital_vpn_telegram_bot
+~~~
+
+The same order applies to any release whose migrations the bot reads, such as
+bot 0003 and vpn 0007-0008 (Telegram login/linking and PaymentProof.source):
+the bot container never runs `migrate`, so new bot code started on the old
+schema fails on every receipt and every login link until the web container
+has migrated.
 
 If HAProxy changed:
 

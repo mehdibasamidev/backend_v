@@ -4,6 +4,12 @@ from apps.vpn.views.plans import VpnPlanListView, CustomPlanOptionsView, CustomP
 from apps.vpn.views.checkout import CheckoutView, RenewSubscriptionView
 from apps.vpn.views.dashboard import UserVpnSubscriptionListView, HideSubscriptionView
 from apps.vpn.views.admin_actions import ReviewPaymentProofView
+from apps.vpn.views.admin_inbounds import (
+    AdminInboundListView,
+    AdminInboundSyncView,
+    AdminInboundGroupListCreateView,
+    AdminInboundGroupDetailView,
+)
 from apps.vpn.views.admin_panel import (
     AdminPlanListCreateView,
     AdminPlanDetailView,
@@ -62,6 +68,21 @@ urlpatterns = [
     path("vpn/admin/plans/<uuid:plan_id>/", AdminPlanDetailView.as_view(), name="vpn-admin-plan-detail"),
 
     path("vpn/admin/pricing-config/", AdminPricingConfigView.as_view(), name="vpn-admin-pricing-config"),
+
+    # Mirror of the 3x-ui panel's inbounds, and the groups plans provision
+    # onto. sync/ stays ahead of any parameterised inbounds/ route.
+    path("vpn/admin/inbounds/sync/", AdminInboundSyncView.as_view(), name="vpn-admin-inbound-sync"),
+    path("vpn/admin/inbounds/", AdminInboundListView.as_view(), name="vpn-admin-inbound-list"),
+    path(
+        "vpn/admin/inbound-groups/",
+        AdminInboundGroupListCreateView.as_view(),
+        name="vpn-admin-inbound-group-list",
+    ),
+    path(
+        "vpn/admin/inbound-groups/<uuid:group_id>/",
+        AdminInboundGroupDetailView.as_view(),
+        name="vpn-admin-inbound-group-detail",
+    ),
 
     path("vpn/admin/payment-proofs/", AdminPaymentProofListView.as_view(), name="vpn-admin-payment-proof-list"),
     path(

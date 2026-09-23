@@ -1,22 +1,29 @@
 from urllib.parse import parse_qs
 from django.contrib.auth.models import AnonymousUser
-from django.contrib.auth import get_user_model
 from channels.db import database_sync_to_async
-from rest_framework_simplejwt.tokens import AccessToken
-
-User = get_user_model()
+from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework_simplejwt.exceptions import AuthenticationFailed
 
 
 @database_sync_to_async
 def get_user_from_token(token):
-    try:
-        access_token = AccessToken(token)
-        print(f"Decoded token: {access_token}")
-        user_id = access_token["user_id"]
-        return User.objects.get(id=user_id)
+    """
+    The same checks as the REST API, through SimpleJWT's own authenticator:
+    a valid access token for a user that exists and is active. Anything
+    else is anonymous, which ChatConsumer closes.
 
-    except Exception as e:
-        print(f"Token auth error: {e}")
+    is_active matters here: a bot-only account merged by "Connect Telegram"
+    is deactivated but may still hold a 30-day access token, and REST
+    already refuses it.
+    """
+    if not token:
+        return AnonymousUser()
+    auth = JWTAuthentication()
+    try:
+        return auth.get_user(auth.get_validated_token(token))
+    except AuthenticationFailed:
+        # InvalidToken is a subclass: bad or expired token, no user id in
+        # it, unknown user, inactive user.
         return AnonymousUser()
 
 
@@ -30,7 +37,7 @@ class TokenAuthMiddleware:
 
         token = params.get("token", [None])[0]
 
+        # The token is a live credential - never print or log it.
         scope["user"] = await get_user_from_token(token)
-        print(f"Authenticated user: {scope['user']} with token: {token}")
 
         return await self.app(scope, receive, send)

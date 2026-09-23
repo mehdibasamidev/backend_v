@@ -9,6 +9,7 @@ from django.conf import settings
 from django.utils import timezone
 
 from apps.vpn.models import SubscriptionStatusChoices, UserVpnSubscription
+from apps.vpn.services.inbounds import resolve_inbound_ids
 from apps.vpn.services.xui_client import ThreeXUiClient
 from config.utils.exceptions import AppException
 
@@ -19,11 +20,7 @@ logger = logging.getLogger("apps")
 _SUFFIX_ALPHABET = string.ascii_lowercase + string.digits
 _SUFFIX_LENGTH = 4
 _MAX_EMAIL_ATTEMPTS = 12
-
-
-def _default_inbound_ids():
-    raw = getattr(settings, "XUI_DEFAULT_INBOUND_IDS", "")
-    return [int(x) for x in raw.split(",") if x.strip()]
+_MAX_BASE_LENGTH = 32
 
 
 def _build_subscription_link(sub_id):
@@ -33,24 +30,61 @@ def _build_subscription_link(sub_id):
     return f"{base}/{sub_id}"
 
 
+def _sanitize_name(value):
+    # 3x-ui shows this label everywhere and it ends up in share links, so
+    # ASCII only. "_" is allowed because Telegram usernames use it and it
+    # is URL-safe; it is trimmed from the ends so "-suffix" reads cleanly.
+    cleaned = re.sub(r"[^a-z0-9_]", "", (value or "").lower())
+    return cleaned.strip("_")[:_MAX_BASE_LENGTH].rstrip("_")
+
+
+def _english_name(value):
+    # A display name only helps if it reads as a name. Persian (or emoji)
+    # sanitises to nothing or to bare digits, which says less than the
+    # Telegram id fallback does.
+    cleaned = _sanitize_name(value)
+    return cleaned if re.search(r"[a-z]", cleaned) else ""
+
+
 def _base_name_for(user):
     """
-    Prefers the username; falls back to the email local part, then to a
-    literal so bot-registered users (who have no username) still get
-    something readable.
-    """
-    candidate = (user.username or "").strip()
-    if not candidate:
-        candidate = (user.email or "").split("@")[0]
+    The readable half of the panel client name, first usable match wins.
 
-    # 3x-ui shows this label everywhere - keep it ASCII and predictable.
-    candidate = re.sub(r"[^a-z0-9]", "", candidate.lower())
-    return candidate[:20] or "user"
+    Telegram users: Telegram username, account username, English display
+    name (spaces dropped), email local part, then "tg<telegram id>" - the
+    id is always there and lets an admin find the person in Telegram.
+
+    App-only users: account username, email local part, then "user".
+    """
+    # Reverse one-to-one; its DoesNotExist is also an AttributeError, so
+    # getattr covers "no profile". Read through the relation rather than
+    # importing apps.bot, which vpn must not depend on.
+    profile = getattr(user, "telegram_profile", None)
+    email_local_part = (user.email or "").split("@")[0]
+
+    if profile is None:
+        candidates = [user.username, email_local_part]
+        fallback = "user"
+    else:
+        candidates = [
+            profile.telegram_username,
+            user.username,
+            _english_name(user.full_name),
+            _english_name(profile.telegram_first_name),
+            email_local_part,
+        ]
+        fallback = f"tg{profile.telegram_user_id}"
+
+    for candidate in candidates:
+        cleaned = _sanitize_name(candidate)
+        if cleaned:
+            return cleaned
+    return fallback
 
 
 def generate_xui_client_email(user, panel_client=None):
     """
-    Builds a panel client label like "mehdi-ud4r".
+    Builds a panel client label like "mehdi_bs-x7k2" or "tg5839201-x7k2".
 
     The random suffix exists because one person can hold several services
     at once, so the username alone is not unique. On a collision a fresh
@@ -94,14 +128,16 @@ def generate_xui_client_email(user, panel_client=None):
 def activate_subscription(subscription):
     """
     Called after an admin approves the payment proof for a subscription.
-    Creates the client on the 3x-ui panel (attached to every configured
-    default inbound at once), then fetches the server-generated uuid/subId
-    so we can build the subscription link.
+    Creates the client on the 3x-ui panel (attached to every inbound of the
+    plan's group at once), then fetches the server-generated uuid/subId so
+    we can build the subscription link.
     """
     client = ThreeXUiClient()
-    inbound_ids = _default_inbound_ids()
-    if not inbound_ids:
-        raise ValueError("XUI_DEFAULT_INBOUND_IDS is not configured in settings")
+    # Resolved now, at approval, from the plan's current group and then
+    # frozen into xui_inbound_ids. Moving a plan to another group therefore
+    # only affects activations from here on; clients already on the panel
+    # keep the inbounds they were created with.
+    inbound_ids = resolve_inbound_ids(subscription)
 
     now = timezone.now()
     expires_at = now + timedelta(days=subscription.duration_days)
@@ -135,7 +171,15 @@ def activate_subscription(subscription):
     subscription.started_at = now
     subscription.expires_at = expires_at
     subscription.status = SubscriptionStatusChoices.ACTIVE
-    subscription.save()
+    # Only what this function set. `subscription` was loaded before the
+    # panel round trips above, and a "Connect Telegram" merge can move it to
+    # another account meanwhile; a full save would write the stale user
+    # back, leaving a paid service on a deactivated account.
+    subscription.save(update_fields=[
+        "xui_client_email", "xui_client_uuid", "xui_client_subid",
+        "xui_inbound_ids", "subscription_link", "started_at", "expires_at",
+        "status", "updated_at",
+    ])
     return subscription
 
 
@@ -259,7 +303,12 @@ def extend_subscription(subscription, extra_days=0, extra_gb=0):
     subscription.expires_at = new_expires_at
     subscription.last_synced_at = now
     subscription.status = SubscriptionStatusChoices.ACTIVE
-    subscription.save()
+    # Only what this function set - see activate_subscription: a full save
+    # after the panel calls could undo a merge that moved the subscription.
+    subscription.save(update_fields=[
+        "volume_gb", "used_traffic_bytes", "expires_at", "last_synced_at",
+        "status", "updated_at",
+    ])
     return subscription
 
 

@@ -182,6 +182,8 @@ PAYMENT_CARD_HOLDER=<account-holder>
 # پنل 3x-ui / X-UI
 XUI_PANEL_BASE_URL=https://panel.example.com/<panel-path>/
 XUI_API_TOKEN=<x-ui-api-token>
+# فقط یک بار، توسط migration شمارهٔ 0005 اپ vpn، برای ساخت گروه پیش‌فرض خوانده
+# می‌شود؛ بعد از اجرای آن می‌توانید حذفش کنید (نکته‌های پایین را ببینید).
 XUI_DEFAULT_INBOUND_IDS=<comma-separated-inbound-ids>
 XUI_SUBSCRIPTION_BASE_URL=https://subscriptions.example.com/<path>
 
@@ -190,6 +192,8 @@ TELEGRAM_BOT_TOKEN=
 TELEGRAM_WEBHOOK_SECRET=<random-32-plus-character-secret>
 TELEGRAM_BASE_WEBHOOK_URL=https://api.example.com
 TELEGRAM_ADMIN_GROUP_CHAT_ID=
+# نام کاربری ربات بدون «@»، مثلاً SpaceDigitalVpnBot
+TELEGRAM_BOT_USERNAME=
 
 # سرویس‌های اختیاری
 ANTHROPIC_API_KEY=
@@ -208,6 +212,24 @@ TEST_OTP_CODE=
 - نام متغیر درست KAVENEGAR_OTP_TEMPLATE است، نه KAVENEGAR_TEMPLATE_NAME که
   در نمونهٔ قدیمی دیده می‌شود.
 - DEBUG باید در VPS مقدار False داشته باشد.
+- TELEGRAM_BOT_USERNAME نام کاربری ربات است (اگر با «@» وارد شود، @ حذف
+  می‌شود). دکمه‌های «ورود با تلگرام» و «اتصال تلگرام» در اپلیکیشن کاربر را به
+  https://t.me/<username>?start=... می‌فرستند و تا این متغیر تنظیم نشده، هر دو
+  خطای 400 برمی‌گردانند. کانتینر وب هم به آن نیاز دارد، نه فقط کانتینر ربات،
+  چون لینک را همان می‌سازد.
+- اتصال تلگرام به حساب اپلیکیشن ممکن است حسابی را که فقط در ربات ساخته شده با
+  آن یکی کند؛ حساب ربات بعد از آن غیرفعال می‌شود (is_active=False، هرگز حذف
+  نمی‌شود). SimpleJWT توکن‌های کاربر غیرفعال را رد می‌کند چون مقدار پیش‌فرض
+  CHECK_USER_IS_ACTIVE برابر True است؛ آن را در SIMPLE_JWT تغییر ندهید.
+- XUI_DEFAULT_INBOUND_IDS دیگر تنظیم برنامه نیست. migration شمارهٔ 0005 اپ vpn
+  آن را فقط یک بار می‌خواند تا گروه اینباند «Default» را بسازد، و بعد از اجرای
+  آن migration می‌توانید این متغیر را از .env حذف کنید. از آن به بعد اینباندها
+  و گروه‌ها در پنل ادمین اپلیکیشن Flutter (تب «Inbounds») یا در Django admin
+  مدیریت می‌شوند: فهرست اینباندها را از پنل همگام کنید، گروه‌هایی مثل «Europe»
+  یا «Asia» بسازید و برای هر پلن ثابت یک گروه انتخاب کنید. پلن‌های سفارشی و
+  پلن‌های ثابتِ بدون گروه از گروه پیش‌فرض استفاده می‌کنند. برای به‌روزکردن
+  فهرست از خط فرمان:
+  docker compose exec spacedigital_vpn_django python manage.py sync_xui_inbounds
 - در config/settings.py مقادیر CSRF_TRUSTED_ORIGINS و AWS_S3_CUSTOM_DOMAIN
   فعلاً برای دامنه‌های فعلی hard-code شده‌اند. اگر دامنهٔ دیگری دارید، پیش
   از build آن‌ها را تغییر دهید: اولی https://api.example.com و دومی
@@ -361,6 +383,23 @@ git pull --ff-only origin main
 docker compose up -d --build
 docker compose logs --tail=100 django
 ~~~
+
+فقط یک بار، برای نسخه‌ای که migrationهای 0004 تا 0006 اپ vpn را اضافه می‌کند
+(گروه‌های اینباند و صف ارسال فیش‌ها به تلگرام)، به‌جای `docker compose up -d --build`
+بالا این ترتیب را اجرا کنید. در غیر این صورت بات قدیمی فیش‌ها را بدون ثبتِ
+«ارسال‌شده» به ادمین‌ها می‌فرستد و بات جدید همان فیش‌ها را دوباره ارسال می‌کند:
+
+~~~bash
+docker compose stop spacedigital_vpn_telegram_bot
+docker compose up -d --build spacedigital_vpn_django
+docker compose logs -f spacedigital_vpn_django   # منتظر "Starting Gunicorn" بمانید: migrationها تمام شده‌اند
+docker compose up -d --build spacedigital_vpn_telegram_bot
+~~~
+
+همین ترتیب برای هر نسخه‌ای که migrationهایش را ربات هم می‌خواند لازم است، مثل
+bot 0003 و vpn 0007 تا 0008 (ورود/اتصال با تلگرام و PaymentProof.source):
+کانتینر ربات هیچ‌وقت `migrate` اجرا نمی‌کند، پس کد جدید ربات روی schema قدیمی
+با هر فیش و هر لینک ورود خطا می‌دهد تا وقتی کانتینر وب migrate کند.
 
 اگر haproxy.conf تغییر کرد:
 

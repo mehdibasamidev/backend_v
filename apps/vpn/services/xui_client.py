@@ -127,6 +127,23 @@ class ThreeXUiClient:
         payload = self._request("GET", f"/panel/api/clients/links/{email}")
         return payload.get("obj") or []
 
+    def list_inbounds(self):
+        """
+        Every inbound on the panel as {id, remark, protocol, port, enable,
+        ...}, ordered by id.
+
+        /options rather than /list: /list embeds each inbound's full client
+        list (uuids, passwords) plus a traffic row per client, so it grows
+        with the customer count and drags secrets through here for nothing.
+        """
+        payload = self._request("GET", "/panel/api/inbounds/options")
+        inbounds = payload.get("obj")
+        if inbounds is None:
+            return []
+        if not isinstance(inbounds, list):
+            raise XuiApiException("The panel returned an unexpected inbound list")
+        return inbounds
+
     def delete_client(self, email):
         return self._request("POST", f"/panel/api/clients/del/{email}")
 

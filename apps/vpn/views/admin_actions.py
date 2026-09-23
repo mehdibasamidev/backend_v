@@ -7,6 +7,7 @@ from rest_framework import serializers
 
 from apps.vpn.models import PaymentProof
 from apps.vpn.services.review import approve_payment_proof, reject_payment_proof
+from config.utils.exceptions import AppException
 from config.utils.response import SuccessResponse, BadRequestResponse, ServerErrorResponse
 
 
@@ -48,5 +49,9 @@ class ReviewPaymentProofView(APIView):
                 message = "Payment rejected"
 
             return SuccessResponse(message=message, data={"subscription_status": subscription.status})
+        except AppException as e:
+            # Something the admin can fix and retry (e.g. an inbound group
+            # with no inbounds); the proof is still pending.
+            return BadRequestResponse(message=e.message)
         except Exception as e:
             return ServerErrorResponse(errors=str(e))

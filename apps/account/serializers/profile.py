@@ -21,6 +21,11 @@ class UserInfoSerializer(serializers.ModelSerializer):
     # login is even possible for this account.
     has_password = serializers.SerializerMethodField()
 
+    # Null until the account is connected to Telegram (signed up in the bot,
+    # "Login with Telegram", or "Connect Telegram" in the profile). Drives
+    # whether the profile offers "Connect Telegram".
+    telegram = serializers.SerializerMethodField()
+
     class Meta:
         model = User
         exclude = [
@@ -39,6 +44,19 @@ class UserInfoSerializer(serializers.ModelSerializer):
     def get_has_password(self, obj):
         return obj.has_usable_password()
 
+    def get_telegram(self, obj):
+        # Read through the reverse relation rather than importing apps.bot.
+        # Its DoesNotExist is also an AttributeError, so getattr covers "no
+        # profile".
+        profile = getattr(obj, "telegram_profile", None)
+        if profile is None:
+            return None
+        return {
+            "telegram_user_id": profile.telegram_user_id,
+            "username": profile.telegram_username or "",
+            "first_name": profile.telegram_first_name or "",
+        }
+
 
 class UserProfileUpdateSerializer(serializers.ModelSerializer):
     class Meta:
@@ -46,6 +64,15 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
         exclude = [
             "id",
             "email",
+            # Sign-in identifiers and the proof behind them change only
+            # through their own flows (phone OTP, email OTP, Google). Writable
+            # here, anyone could claim a number or an address they don't own
+            # and mark it verified - which the login backend, password reset
+            # and the bot's "Connect Telegram" confirmation all trust.
+            "phone_number",
+            "is_phone_verified",
+            "is_email_verified",
+            "google_id",
             # "username",
             "password",
             "last_login",

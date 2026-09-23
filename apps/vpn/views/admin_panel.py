@@ -48,7 +48,7 @@ class AdminPlanListCreateView(APIView):
         )},
     )
     def get(self, request):
-        plans = VpnPlan.objects.all()
+        plans = VpnPlan.objects.select_related("inbound_group")
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(plans, request, view=self)
         return paginator.get_paginated_response(
