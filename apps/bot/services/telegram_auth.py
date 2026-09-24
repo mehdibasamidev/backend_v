@@ -22,7 +22,6 @@ import re
 import secrets
 import uuid
 
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
 from django.db.models import Q
@@ -41,6 +40,7 @@ from apps.bot.services.account_merge import (
     is_bot_only_account,
     merge_bot_account_into,
 )
+from apps.bot.services.bot_settings import effective_bot_username
 from apps.bot.services.registration import get_or_create_telegram_user
 from config.utils.exceptions import (
     AppException,
@@ -149,10 +149,15 @@ def _app_message(request, status):
 # ---------------------------------------------------------------------------
 
 def _require_bot_username():
-    if not settings.TELEGRAM_BOT_USERNAME:
+    """The username for the deep link: the admin's, else the one the bot container recorded."""
+    username = effective_bot_username()
+    if not username:
         raise BadRequestException(
-            "Telegram sign-in isn't set up on the server yet (TELEGRAM_BOT_USERNAME)."
+            "Telegram sign-in isn't set up on the server yet. An admin needs to "
+            "set the bot's username in the admin panel (Settings tab), or start "
+            "the bot container so it records it."
         )
+    return username
 
 
 def _hash_secret(secret):
@@ -178,7 +183,7 @@ def _purge_stale():
     ).exclude(kept).delete()
 
 
-def _create(purpose, *, user=None, poll_secret=""):
+def _create(purpose, bot_username, *, user=None, poll_secret=""):
     """
     Returns (request, deep_link). The start token is only ever in the deep
     link; the row keeps its hash.
@@ -186,7 +191,7 @@ def _create(purpose, *, user=None, poll_secret=""):
     start_token = secrets.token_urlsafe(_START_TOKEN_BYTES)
     # Built before the insert, so a token that breaks Telegram's rules
     # writes nothing.
-    deep_link = build_deep_link(purpose, start_token)
+    deep_link = build_deep_link(purpose, start_token, bot_username=bot_username)
     request = TelegramAuthRequest.objects.create(
         purpose=purpose,
         start_token_hash=_hash_secret(start_token),
@@ -205,17 +210,19 @@ def start_login_request():
     holds the secret collects the session, so it must reach nobody but the
     app that asked.
     """
-    _require_bot_username()
+    bot_username = _require_bot_username()
     _purge_stale()
     poll_secret = secrets.token_urlsafe(_POLL_SECRET_BYTES)
-    request, deep_link = _create(TelegramAuthPurpose.LOGIN, poll_secret=poll_secret)
+    request, deep_link = _create(
+        TelegramAuthPurpose.LOGIN, bot_username, poll_secret=poll_secret,
+    )
     return request, deep_link, poll_secret
 
 
 @transaction.atomic
 def start_link_request(user):
     """Returns (request, deep_link). The deep link is only ever in this return value."""
-    _require_bot_username()
+    bot_username = _require_bot_username()
     if TelegramProfile.objects.filter(user=user).exists():
         raise BadRequestException("This account is already connected to Telegram.")
     _purge_stale()
@@ -227,7 +234,7 @@ def start_link_request(user):
         purpose=TelegramAuthPurpose.LINK,
         status=TelegramAuthStatus.PENDING,
     ).update(status=TelegramAuthStatus.CANCELLED, failure_reason=REASON_REPLACED)
-    return _create(TelegramAuthPurpose.LINK, user=user)
+    return _create(TelegramAuthPurpose.LINK, bot_username, user=user)
 
 
 def start_payload(purpose, start_token):
@@ -239,11 +246,8 @@ def start_payload(purpose, start_token):
     return payload
 
 
-def build_deep_link(purpose, start_token):
-    return (
-        f"https://t.me/{settings.TELEGRAM_BOT_USERNAME}"
-        f"?start={start_payload(purpose, start_token)}"
-    )
+def build_deep_link(purpose, start_token, *, bot_username):
+    return f"https://t.me/{bot_username}?start={start_payload(purpose, start_token)}"
 
 
 # ---------------------------------------------------------------------------

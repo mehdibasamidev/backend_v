@@ -256,11 +256,9 @@ TELEGRAM_ADMIN_USER_IDS = config("TELEGRAM_ADMIN_USER_IDS", default="", cast=Csv
 # that fails from Iran.
 TELEGRAM_PROXY_URL = config("TELEGRAM_PROXY_URL", default="")
 
-# The bot's @username, without the "@" (stripped here if pasted with it).
-# "Login with Telegram" and "Connect Telegram" build t.me deep links from it
-# and answer 400 while it is empty. The web container can't ask Telegram for
-# it (it never talks to Telegram), so it has to be configured.
-TELEGRAM_BOT_USERNAME = config("TELEGRAM_BOT_USERNAME", default="").strip().lstrip("@")
+# The bot's @username is no longer a setting: see TelegramBotSettings (admin
+# panel "Settings" tab), which the bot container also fills in when it
+# starts. TELEGRAM_BOT_USERNAME is read once, by bot migration 0006, to seed it.
 
 # --- optional AI receipt pre-check (no-ops when unset) ---
 ANTHROPIC_API_KEY = config("ANTHROPIC_API_KEY", default="")  # اختیاری، فقط برای بررسی AI فیش

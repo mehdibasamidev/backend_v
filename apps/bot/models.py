@@ -171,3 +171,88 @@ class TelegramAuthRequest(models.Model):
         if self.status == TelegramAuthStatus.PENDING and self.is_expired:
             return "expired"
         return self.status
+
+
+class TelegramBotSettings(models.Model):
+    """
+    The bot's @username, which "Login with Telegram" and "Connect Telegram"
+    build their https://t.me/<bot>?start=... deep links from
+    (apps/bot/services/telegram_auth.py). Single row - use get_solo().
+    Reads and writes go through apps/bot/services/bot_settings.py.
+
+    Two fields because two parties know it. An admin types bot_username (the
+    admin panel's Settings tab, or the Django admin). The bot container
+    records detected_bot_username every time it starts, from getMe - the web
+    container never talks to Telegram, so it can't find out by itself.
+
+    The bot writing into bot_username instead would overwrite what the admin
+    typed, and a value it had written once would go stale when the token
+    changes. Kept apart, the admin's value always wins, and the detected one
+    always follows whichever token the bot last started with. When both are
+    set and differ, the links follow the admin's value and
+    matches_running_bot is False, which the admin panel shows.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # Stored without the "@". Telegram usernames are at most 32 characters.
+    bot_username = models.CharField(
+        max_length=32,
+        blank=True,
+        help_text=(
+            "The bot's username without '@', e.g. my_vpn_bot. Leave empty to "
+            "use the one the bot container detects when it starts. When set, "
+            "it is used even if the running bot is a different one."
+        ),
+    )
+
+    # Written only by the bot container (bot_settings.record_running_bot).
+    # editable=False keeps them out of every form and serializer input.
+    detected_bot_username = models.CharField(
+        max_length=32,
+        blank=True,
+        editable=False,
+        help_text="Recorded by the bot container from its own token each time it starts.",
+    )
+    detected_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        editable=False,
+        help_text="When the bot container last recorded its username.",
+    )
+
+    # The last admin change. A bot restart only moves detected_at.
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Telegram Bot Settings"
+        verbose_name_plural = "Telegram Bot Settings"
+
+    def __str__(self):
+        username = self.effective_bot_username
+        return f"Telegram bot settings (@{username})" if username else (
+            "Telegram bot settings (not configured)"
+        )
+
+    @classmethod
+    def get_solo(cls):
+        obj, _ = cls.objects.get_or_create(defaults={})
+        return obj
+
+    @property
+    def effective_bot_username(self):
+        """What the deep links use: the admin's value, else the detected one, else ""."""
+        return self.bot_username or self.detected_bot_username
+
+    @property
+    def is_configured(self):
+        return bool(self.effective_bot_username)
+
+    @property
+    def matches_running_bot(self):
+        """
+        None unless both are known - with only one of them there is nothing
+        to compare. Case-insensitive, as Telegram usernames are.
+        """
+        if not (self.bot_username and self.detected_bot_username):
+            return None
+        return self.bot_username.lower() == self.detected_bot_username.lower()

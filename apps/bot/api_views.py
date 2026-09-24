@@ -1,6 +1,7 @@
 """
-REST side of "Login with Telegram" and "Connect Telegram". The logic is in
-apps/bot/services/telegram_auth.py, shared with the bot's handlers.
+REST side of "Login with Telegram" and "Connect Telegram", and the admin
+panel's bot settings. The logic is in apps/bot/services/telegram_auth.py,
+shared with the bot's handlers, and apps/bot/services/bot_settings.py.
 
 Kept apart from apps/bot/views.py, which is the Telegram webhook and has
 nothing to do with the app's API.
@@ -8,11 +9,12 @@ nothing to do with the app's API.
 
 from drf_yasg.utils import no_body, swagger_auto_schema
 from rest_framework.parsers import JSONParser
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework.renderers import JSONRenderer
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 
+from apps.bot.serializers.bot_settings import TelegramBotSettingsSerializer
 from apps.bot.serializers.telegram_auth import (
     TelegramAuthStartSerializer,
     TelegramLinkStatusSerializer,
@@ -20,6 +22,7 @@ from apps.bot.serializers.telegram_auth import (
     TelegramLoginPollSerializer,
     TelegramLoginStartSerializer,
 )
+from apps.bot.services.bot_settings import get_bot_settings, set_admin_bot_username
 from apps.bot.services.telegram_auth import (
     link_status,
     poll_login,
@@ -164,4 +167,50 @@ class TelegramLinkStatusView(APIView):
         return SuccessResponse(
             data=link_status(request_id, request.user),
             message="Telegram link status.",
+        )
+
+
+class AdminTelegramBotSettingsView(APIView):
+    """
+    The admin panel's "Telegram bot" section (Settings tab): the username
+    the deep links use. GET and PATCH only - the row is created by
+    migration bot 0006 and never deleted. Only bot_username is writable;
+    the detected fields belong to the bot container.
+    """
+    permission_classes = [IsAdminUser]
+    renderer_classes = [JSONRenderer]
+    parser_classes = [JSONParser]
+
+    @swagger_auto_schema(
+        responses={200: create_response_serializer(
+            data_serializer_class=TelegramBotSettingsSerializer,
+            text_message="Telegram bot settings retrieved successfully.",
+        )},
+    )
+    def get(self, request):
+        return SuccessResponse(
+            data=TelegramBotSettingsSerializer(get_bot_settings()).data,
+            message="Telegram bot settings retrieved successfully.",
+        )
+
+    @swagger_auto_schema(
+        request_body=TelegramBotSettingsSerializer,
+        responses={200: create_response_serializer(
+            data_serializer_class=TelegramBotSettingsSerializer,
+            text_message="Telegram bot settings updated.",
+        )},
+    )
+    def patch(self, request):
+        row = get_bot_settings()
+        serializer = TelegramBotSettingsSerializer(row, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return BadRequestResponse(errors=serializer.errors)
+        # Not serializer.save(): the service writes bot_username alone, so
+        # this can't write back detected_* values the bot container
+        # replaced since the row was read.
+        if "bot_username" in serializer.validated_data:
+            row = set_admin_bot_username(serializer.validated_data["bot_username"])
+        return SuccessResponse(
+            data=TelegramBotSettingsSerializer(row).data,
+            message="Telegram bot settings updated.",
         )

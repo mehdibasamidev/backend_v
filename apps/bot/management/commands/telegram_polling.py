@@ -6,6 +6,7 @@ import signal
 from django.core.management.base import BaseCommand
 
 from apps.bot.services.bot_app import build_application
+from apps.bot.services.bot_settings import arecord_running_bot_until_done
 from apps.bot.services.proof_notifier import run_proof_notifier
 
 
@@ -99,6 +100,17 @@ class Command(BaseCommand):
                 run_proof_notifier(application.bot)
             )
 
+            # initialize() (entering the block) ran getMe, so the bot knows
+            # its own username. Recorded for the web container, which
+            # builds the "Login with Telegram" links and never talks to
+            # Telegram itself. A task rather than awaited here: on a fresh
+            # install the web container is usually still migrating, and
+            # this retries until the table is there while the bot already
+            # serves. Never fatal.
+            username_recorder = asyncio.create_task(
+                arecord_running_bot_until_done(application.bot)
+            )
+
             # docker-compose starts this command in exec form, so Python
             # is PID 1, and the kernel drops a SIGTERM that PID 1 has no
             # handler for: `docker stop` would wait out its 10 seconds and
@@ -122,7 +134,10 @@ class Command(BaseCommand):
                 await stop.wait()
 
             finally:
+                username_recorder.cancel()
                 notifier.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await username_recorder
                 with contextlib.suppress(asyncio.CancelledError):
                     await notifier
 

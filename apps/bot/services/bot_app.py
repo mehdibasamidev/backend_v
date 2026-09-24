@@ -20,6 +20,7 @@ from apps.bot.handlers import (
     referral,
     telegram_auth,
 )
+from apps.bot.services.bot_settings import arecord_running_bot
 
 
 _application: Application | None = None
@@ -272,6 +273,10 @@ async def get_application() -> Application:
             )
 
             await _application.initialize()
+
+            # Same as the polling command: initialize() ran getMe, so record
+            # which bot this token is for the deep links. Never raises.
+            await arecord_running_bot(_application.bot)
 
     return _application
 

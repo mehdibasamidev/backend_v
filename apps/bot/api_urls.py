@@ -1,6 +1,7 @@
 from django.urls import path
 
 from apps.bot.api_views import (
+    AdminTelegramBotSettingsView,
     TelegramLinkStartView,
     TelegramLinkStatusView,
     TelegramLoginPollView,
@@ -21,4 +22,7 @@ urlpatterns = [
         TelegramLinkStatusView.as_view(),
         name="auth-telegram-link-status",
     ),
+
+    # Admin panel, Settings tab: the bot username the deep links above use.
+    path("bot/admin/settings/", AdminTelegramBotSettingsView.as_view(), name="bot-admin-settings"),
 ]
