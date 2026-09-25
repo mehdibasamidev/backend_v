@@ -31,7 +31,9 @@ services:
   # MinIO
   # ============================================================
   spacedigital_vpn_minio:
-    image: minio/minio
+    # MINIO_IMAGE lets a server pin the exact build (e.g. minio/minio@sha256:...)
+    # when migrating data from another server; see docs/MIGRATION_FA.md.
+    image: ${MINIO_IMAGE:-minio/minio}
     container_name: spacedigital_vpn_minio
     restart: always
     env_file:

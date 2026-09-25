@@ -393,6 +393,11 @@ docker compose up -d --build
 docker compose logs --tail=100 django
 ~~~
 
+نام سرویس‌های بالا قدیمی است؛ نام‌های واقعی پیشوند دارند
+(`spacedigital_vpn_db`، `spacedigital_vpn_django`). برای بکاپ کامل PostgreSQL
+**و** MinIO و برای انتقال همه‌چیز به VPS دیگر، از `scripts/backup.sh` و
+`scripts/restore.sh` طبق `docs/MIGRATION_FA.md` استفاده کنید.
+
 فقط یک بار، برای نسخه‌ای که migrationهای 0004 تا 0006 اپ vpn را اضافه می‌کند
 (گروه‌های اینباند و صف ارسال فیش‌ها به تلگرام)، به‌جای `docker compose up -d --build`
 بالا این ترتیب را اجرا کنید. در غیر این صورت بات قدیمی فیش‌ها را بدون ثبتِ

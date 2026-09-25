@@ -90,3 +90,6 @@ local_settings.py
 .env.dev
 db.sqlite3
 django_env
+
+# Backups written by scripts/backup.sh (contain a copy of .env)
+backups/

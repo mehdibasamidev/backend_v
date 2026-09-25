@@ -384,6 +384,12 @@ docker compose up -d --build
 docker compose logs --tail=100 django
 ~~~
 
+The service names above are historical; the real ones are prefixed
+(`spacedigital_vpn_db`, `spacedigital_vpn_django`). For a full snapshot of
+PostgreSQL **and** MinIO, and for moving everything to another VPS, use
+`scripts/backup.sh` / `scripts/restore.sh` as described in
+`docs/MIGRATION_FA.md`.
+
 Once, for the update that adds vpn migrations 0004-0006 (inbound groups and
 the Telegram receipt outbox), replace the plain `docker compose up -d --build`
 above with this order. The old bot would otherwise keep posting receipts

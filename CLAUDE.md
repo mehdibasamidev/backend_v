@@ -156,6 +156,11 @@ ASGI is mandatory for the web container (`gunicorn config.asgi:application
 webhook view if you ever switch back to it. The polling worker is a plain
 management command and doesn't care.
 
+Backup and server-to-server migration of PostgreSQL + MinIO:
+`scripts/backup.sh` on the source, `scripts/restore.sh` on the target,
+walkthrough in `docs/MIGRATION_FA.md`. `backups/` is gitignored because it
+holds a copy of `.env`.
+
 ## When something breaks
 
 Find the line that causes it and say which line. Don't tune a value until the
