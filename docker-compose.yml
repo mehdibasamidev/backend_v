@@ -15,7 +15,6 @@ services:
     networks:
       - spacedigital_vpn_net
 
-
   # ============================================================
   # Redis
   # ============================================================
@@ -27,7 +26,6 @@ services:
       - "127.0.0.1:6379:6379" # Private
     networks:
       - spacedigital_vpn_net
-
 
   # ============================================================
   # MinIO
@@ -53,7 +51,6 @@ services:
         aliases:
           - vpnminio
 
-
   # ============================================================
   # Django / API
   # ============================================================
@@ -76,7 +73,6 @@ services:
       - "127.0.0.1:8000:8000" # Private to HAProxy
     networks:
       - spacedigital_vpn_net
-
 
   # ============================================================
   # Telegram Bot - Long Polling Worker
@@ -116,7 +112,6 @@ services:
     networks:
       - spacedigital_vpn_net
 
-
 # ================================================================
 # Volumes
 # ================================================================
@@ -124,12 +119,11 @@ services:
 volumes:
   spacedigital_vpn_postgres_data:
     name: spacedigital_vpn_postgres_data
-    external: true
+    # external: true
 
   spacedigital_vpn_minio_data:
     name: spacedigital_vpn_minio_data
-    external: true
-
+    # external: true
 
 # ================================================================
 # Network
