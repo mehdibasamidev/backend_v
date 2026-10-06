@@ -17,13 +17,12 @@ STATUS_LABELS_FA = {
 
 
 async def list_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
     def _get():
         profile = get_or_create_telegram_user(update.effective_user)
+
         if profile is None:
             return None
+
         return list(
             UserVpnSubscription.objects
             .filter(user=profile.user)
@@ -33,25 +32,76 @@ async def list_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     subs = await sync_to_async(_get)()
 
-    # None is "no account"; an empty list is "account, no services yet".
+    if update.callback_query:
+        await update.callback_query.answer()
+
     if subs is None:
-        await query.edit_message_text("برای خرید اول باید ثبت‌نام کنی.\nدستور /start رو بزن و کد معرفت رو وارد کن.")
+        text = (
+            "برای خرید اول باید ثبت‌نام کنی.\n"
+            "دستور /start رو بزن و کد معرفت رو وارد کن."
+        )
+
+        if update.callback_query:
+            await update.callback_query.edit_message_text(text)
+        else:
+            await update.message.reply_text(text)
         return
 
     if not subs:
-        await query.edit_message_text("هنوز هیچ سرویسی نداری.", reply_markup=main_menu_keyboard())
+        text = "هنوز هیچ سرویسی نداری."
+
+        if update.callback_query:
+            await update.callback_query.edit_message_text(
+                text,
+                reply_markup=main_menu_keyboard(),
+            )
+        else:
+            await update.message.reply_text(
+                text,
+                reply_markup=main_menu_keyboard(),
+            )
         return
 
     lines = []
+
     for sub in subs:
-        title = sub.label or (sub.plan.name if sub.plan else "پلن سفارشی")
-        status_fa = STATUS_LABELS_FA.get(sub.status, sub.status)
+        title = sub.label or (
+            sub.plan.name if sub.plan else "پلن سفارشی"
+        )
+
+        status_fa = STATUS_LABELS_FA.get(
+            sub.status,
+            sub.status,
+        )
+
         line = f"📦 {title} — {status_fa}"
+
         if sub.status == "active":
-            volume_text = "نامحدود" if sub.is_unlimited_volume else f"{sub.remaining_volume_gb} گیگ باقی‌مونده"
-            line += f"\n{volume_text} | {sub.remaining_days} روز باقی‌مونده"
+            volume_text = (
+                "نامحدود"
+                if sub.is_unlimited_volume
+                else f"{sub.remaining_volume_gb} گیگ باقی‌مونده"
+            )
+
+            line += (
+                f"\n{volume_text}"
+                f" | {sub.remaining_days} روز باقی‌مونده"
+            )
+
             if sub.subscription_link:
                 line += f"\nلینک ساب: {sub.subscription_link}"
+
         lines.append(line)
 
-    await query.edit_message_text("\n\n".join(lines), reply_markup=main_menu_keyboard())
+    text = "\n\n".join(lines)
+
+    if update.callback_query:
+        await update.callback_query.edit_message_text(
+            text,
+            reply_markup=main_menu_keyboard(),
+        )
+    else:
+        await update.message.reply_text(
+            text,
+            reply_markup=main_menu_keyboard(),
+        )

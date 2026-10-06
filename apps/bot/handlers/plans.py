@@ -9,10 +9,19 @@ from apps.bot.services.keyboards import plans_list_keyboard, plan_detail_keyboar
 
 
 async def show_plan_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
     keyboard = await sync_to_async(plans_list_keyboard)()
-    await query.edit_message_text("یکی از پلن‌های زیر رو انتخاب کن:", reply_markup=keyboard)
+
+    if update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.edit_message_text(
+            "یکی از پلن‌های زیر رو انتخاب کن:",
+            reply_markup=keyboard,
+        )
+    else:
+        await update.message.reply_text(
+            "یکی از پلن‌های زیر رو انتخاب کن:",
+            reply_markup=keyboard,
+        )
 
 
 async def show_plan_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
