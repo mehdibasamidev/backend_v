@@ -1,4 +1,9 @@
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+)
 from apps.bot.services.formatting import fa_price
 from apps.vpn.models import VpnPlan
 # Step sizes for the custom-plan +/- steppers. GB uses the step configured in
@@ -16,6 +21,23 @@ def main_menu_keyboard():
         [InlineKeyboardButton("📦 سرویس‌های من", callback_data="menu:subscriptions")],
         [InlineKeyboardButton("🎁 کد دعوت من", callback_data="menu:referral")],
     ])
+
+
+def main_reply_keyboard():
+    return ReplyKeyboardMarkup(
+        [
+            [
+                KeyboardButton("🛒 خرید سرویس"),
+                KeyboardButton("🧩 پلن سفارشی"),
+            ],
+            [
+                KeyboardButton("📦 سرویس‌های من"),
+                KeyboardButton("🎁 کد دعوت من"),
+            ],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+    )
 
 
 def plans_list_keyboard():

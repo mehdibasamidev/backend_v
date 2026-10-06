@@ -3,7 +3,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from apps.bot.handlers.referral import try_handle_referral_code
 from apps.bot.handlers.telegram_auth import try_handle_auth_start
-from apps.bot.services.keyboards import main_menu_keyboard
+from apps.bot.services.keyboards import main_menu_keyboard, main_reply_keyboard
 from apps.bot.services.registration import (
     begin_referral_prompt,
     get_or_create_telegram_user,
@@ -51,7 +51,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         "سلام 👋\nاز این‌جا می‌تونی سرویس VPN بخری، پلن سفارشی بسازی یا سرویس‌های فعالت رو مدیریت کنی.",
-        reply_markup=main_menu_keyboard(),
+        reply_markup=main_reply_keyboard(),
     )
 
 
