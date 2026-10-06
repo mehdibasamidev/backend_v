@@ -1,8 +1,8 @@
 from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    KeyboardButton,
-    ReplyKeyboardMarkup,
+    # KeyboardButton,
+    # ReplyKeyboardMarkup,
 )
 from apps.bot.services.formatting import fa_price
 from apps.vpn.models import VpnPlan
@@ -23,21 +23,21 @@ def main_menu_keyboard():
     ])
 
 
-def main_reply_keyboard():
-    return ReplyKeyboardMarkup(
-        [
-            [
-                KeyboardButton("🛒 خرید سرویس"),
-                KeyboardButton("🧩 پلن سفارشی"),
-            ],
-            [
-                KeyboardButton("📦 سرویس‌های من"),
-                KeyboardButton("🎁 کد دعوت من"),
-            ],
-        ],
-        resize_keyboard=True,
-        is_persistent=True,
-    )
+# def main_reply_keyboard():
+#     return ReplyKeyboardMarkup(
+#         [
+#             [
+#                 KeyboardButton("🛒 خرید سرویس"),
+#                 KeyboardButton("🧩 پلن سفارشی"),
+#             ],
+#             [
+#                 KeyboardButton("📦 سرویس‌های من"),
+#                 KeyboardButton("🎁 کد دعوت من"),
+#             ],
+#         ],
+#         resize_keyboard=True,
+#         is_persistent=True,
+#     )
 
 
 def plans_list_keyboard():
