@@ -106,6 +106,20 @@ def build_application(*, for_polling: bool = False) -> Application:
         )
     )
 
+    application.add_handler(
+        CommandHandler(
+            "plans",
+            plans.show_plan_list,
+        )
+    )
+
+    application.add_handler(
+        CommandHandler(
+            "mysubs",
+            subscriptions.list_subscriptions,
+        )
+    )
+
     # ------------------------------------------------------------------
     # Main menu
     # ------------------------------------------------------------------
