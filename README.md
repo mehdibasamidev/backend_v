@@ -147,7 +147,7 @@ REFRESH_TOKEN_LIFETIME_DAYS=1
 POSTGRES_DB=vpn_backend
 POSTGRES_USER=vpn_backend
 POSTGRES_PASSWORD=<new-long-random-postgres-password>
-POSTGRES_HOST=db
+POSTGRES_HOST=spacedigital_vpn_db
 POSTGRES_PORT=5432
 
 # MinIO: keep the internal endpoint as shown
@@ -423,7 +423,7 @@ gunzip -c backup-YYYY-MM-DD-HHMMSS.sql.gz | docker compose exec -T db psql -U vp
 ## Troubleshooting
 
 - **Django restarts:** run docker compose logs django; check required variables
-  and that POSTGRES_HOST=db.
+  and that POSTGRES_HOST=spacedigital_vpn_db.
 - **HAProxy returns 502:** check docker compose ps, then curl
   http://127.0.0.1:8000/admin/ and validate HAProxy.
 - **Certbot fails:** verify DNS points at this VPS and port 80 is allowed in

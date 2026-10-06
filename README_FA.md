@@ -154,7 +154,7 @@ REFRESH_TOKEN_LIFETIME_DAYS=1
 POSTGRES_DB=vpn_backend
 POSTGRES_USER=vpn_backend
 POSTGRES_PASSWORD=<new-long-random-postgres-password>
-POSTGRES_HOST=db
+POSTGRES_HOST=spacedigital_vpn_db
 POSTGRES_PORT=5432
 
 # MinIO: endpoint داخلی را تغییر ندهید
@@ -431,7 +431,7 @@ gunzip -c backup-YYYY-MM-DD-HHMMSS.sql.gz | docker compose exec -T db psql -U vp
 ## عیب‌یابی
 
 - **Django مرتب restart می‌شود:** docker compose logs django را ببینید و
-  متغیرهای اجباری و POSTGRES_HOST=db را بررسی کنید.
+  متغیرهای اجباری و POSTGRES_HOST=spacedigital_vpn_db را بررسی کنید.
 - **HAProxy خطای 502 می‌دهد:** docker compose ps را چک کنید، سپس curl
   http://127.0.0.1:8000/admin/ را اجرا و پیکربندی HAProxy را validate کنید.
 - **Certbot خطا دارد:** اطمینان حاصل کنید DNS به همین VPS اشاره می‌کند و

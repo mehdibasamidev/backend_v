@@ -3,6 +3,7 @@ from django.conf import settings
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from apps.bot.services.formatting import fa_price
 from apps.vpn.models import VpnPricingConfig
 from apps.vpn.services.pricing import calculate_custom_plan_price
 from apps.bot.services.registration import get_or_create_telegram_user
@@ -21,9 +22,13 @@ async def start_builder(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     config = await sync_to_async(VpnPricingConfig.get_active)()
     gb, days, users = config.min_gb, config.min_days, config.min_users
+    price = await sync_to_async(calculate_custom_plan_price)(
 
+        gb, days, users
+
+    )
     await query.edit_message_text(
-        custom_plan_text(gb, days, users),
+        custom_plan_text(gb, days, users, price),
         reply_markup=custom_plan_keyboard(gb, days, users, config),
     )
 
@@ -34,8 +39,13 @@ async def adjust(update: Update, context: ContextTypes.DEFAULT_TYPE):
     gb, days, users = _parse_payload(query.data)
 
     config = await sync_to_async(VpnPricingConfig.get_active)()
+    price = await sync_to_async(calculate_custom_plan_price)(
+
+        gb, days, users
+
+    )
     await query.edit_message_text(
-        custom_plan_text(gb, days, users),
+        custom_plan_text(gb, days, users, price),
         reply_markup=custom_plan_keyboard(gb, days, users, config),
     )
 
@@ -68,7 +78,7 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = (
         f"🧩 پلن سفارشی: {gb} گیگ / {days} روز / {users} کاربر\n"
-        f"مبلغ قابل پرداخت: {price} تومان\n\n"
+        f"مبلغ قابل پرداخت: {fa_price(price)} تومان\n\n"
         f"لطفاً این مبلغ رو کارت‌به‌کارت کن:\n"
         f"شماره کارت: {settings.PAYMENT_CARD_NUMBER}\n"
         f"به نام: {settings.PAYMENT_CARD_HOLDER}\n\n"

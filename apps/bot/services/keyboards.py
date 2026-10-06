@@ -1,8 +1,6 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from apps.bot.services.formatting import fa_price
 from apps.vpn.models import VpnPlan
-from apps.vpn.services.pricing import calculate_custom_plan_price
-
 # Step sizes for the custom-plan +/- steppers. GB uses the step configured in
 # VpnPricingConfig (gb_step); days/users don't have a configurable step yet,
 # so these are simple constants - bump them here (or add day_step/user_step
@@ -40,9 +38,8 @@ def _encode(gb, days, users):
     return f"{gb}:{days}:{users}"
 
 
-def custom_plan_text(gb, days, users):
+def custom_plan_text(gb, days, users, price):
     try:
-        price = calculate_custom_plan_price(gb, days, users)
         price_line = f"قیمت: {fa_price(price)}"
     except Exception as e:
         price_line = f"⚠️ {e}"
