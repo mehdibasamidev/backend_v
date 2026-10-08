@@ -4,7 +4,13 @@ from django.db.models import Exists, OuterRef
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from apps.bot.services.formatting import fa_price, service_label, service_numbers
+from apps.bot.services.formatting import (
+    fa_price,
+    service_code,
+    service_label,
+    service_name,
+    service_numbers,
+)
 from apps.bot.services.keyboards import main_menu_keyboard, subscriptions_keyboard
 from apps.bot.services.registration import get_or_create_telegram_user
 from apps.vpn.models import PaymentProof, UserVpnSubscription
@@ -90,7 +96,12 @@ async def list_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE)
     lines = []
     for subscription in subs:
         status_fa = STATUS_LABELS_FA.get(subscription.status, subscription.status)
-        line = f"📦 {service_label(subscription, subscription.number)}\n{status_fa}"
+        client = f"  ({subscription.xui_client_email})" if subscription.xui_client_email else ""
+        line = (
+            f"📦 سرویس {service_code(subscription.number)}{client}\n"
+            f"ℹ️ {service_name(subscription)}\n"
+            f"{status_fa}"
+        )
         if subscription.status == "active":
             volume_text = (
                 "نامحدود"

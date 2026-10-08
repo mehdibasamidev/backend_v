@@ -27,6 +27,11 @@ def service_numbers(user_id):
     return {subscription_id: index for index, subscription_id in enumerate(ids, start=1)}
 
 
+def service_code(number):
+    """How a service number is shown everywhere: "A1", "A2", ..."""
+    return f"A{number}"
+
+
 def service_name(subscription):
     return subscription.label or (
         subscription.plan.name if subscription.plan else "پلن سفارشی"
@@ -40,7 +45,7 @@ def service_label(subscription, number=None, *, with_client=True):
     """
     if number is None:
         number = service_numbers(subscription.user_id).get(subscription.id)
-    head = f"سرویس {number} — " if number else ""
+    head = f"سرویس {service_code(number)} — " if number else ""
     tail = (
         f" ({subscription.xui_client_email})"
         if with_client and subscription.xui_client_email else ""
