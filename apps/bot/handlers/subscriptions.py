@@ -4,7 +4,7 @@ from django.db.models import Exists, OuterRef
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from apps.bot.services.formatting import fa_price
+from apps.bot.services.formatting import fa_price, service_label, service_numbers
 from apps.bot.services.keyboards import main_menu_keyboard, subscriptions_keyboard
 from apps.bot.services.registration import get_or_create_telegram_user
 from apps.vpn.models import PaymentProof, UserVpnSubscription
@@ -32,12 +32,6 @@ def _amounts(days, volume_gb):
     return f"{volume} / {days} روز"
 
 
-def _title(subscription):
-    return subscription.label or (
-        subscription.plan.name if subscription.plan else "پلن سفارشی"
-    )
-
-
 async def list_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE):
     def _get():
         profile = get_or_create_telegram_user(update.effective_user)
@@ -61,8 +55,10 @@ async def list_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE)
         # active services from 3x-ui before rendering; it is throttled to one
         # panel request/minute per service to protect the panel on refreshes.
         subscriptions = lazy_sync(subscriptions)
+        numbers = service_numbers(profile.user_id)
         for subscription in subscriptions:
             subscription.renewal = renewal_info(subscription)
+            subscription.number = numbers.get(subscription.id)
         return subscriptions
 
     subs = await sync_to_async(_get)()
@@ -94,7 +90,7 @@ async def list_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE)
     lines = []
     for subscription in subs:
         status_fa = STATUS_LABELS_FA.get(subscription.status, subscription.status)
-        line = f"📦 {_title(subscription)} — {status_fa}"
+        line = f"📦 {service_label(subscription, subscription.number)}\n{status_fa}"
         if subscription.status == "active":
             volume_text = (
                 "نامحدود"
@@ -145,8 +141,9 @@ async def start_renewal(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user=profile.user, subscription_id=subscription_id,
         )
         starts_now = current_period_used_up(subscription)
+        label = service_label(subscription)
         profile.set_awaiting_action(f"renew:{subscription.id}")
-        return subscription, extra_days, extra_gb, price, starts_now
+        return subscription, extra_days, extra_gb, price, starts_now, label
 
     try:
         prepared = await sync_to_async(_prepare)()
@@ -169,7 +166,7 @@ async def start_renewal(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("برای تمدید باید اول ثبت‌نام کنی.")
         return
 
-    subscription, extra_days, extra_gb, price, starts_now = prepared
+    subscription, extra_days, extra_gb, price, starts_now, label = prepared
     amounts = _amounts(extra_days, extra_gb)
     if starts_now:
         when = (
@@ -184,7 +181,7 @@ async def start_renewal(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     await query.edit_message_text(
         "🔁 تمدید سرویس\n\n"
-        f"سرویس: {_title(subscription)}\n"
+        f"سرویس: {label}\n"
         f"تمدید: {amounts}\n"
         f"مبلغ قابل پرداخت: {fa_price(price)}\n\n"
         f"{when}\n\n"

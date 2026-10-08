@@ -4,6 +4,7 @@ from asgiref.sync import sync_to_async
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from apps.bot.services.formatting import service_label
 from apps.bot.services.admin_access import check_can_review
 from apps.vpn.models import PaymentProof
 from apps.vpn.models import PaymentProofKindChoices
@@ -101,6 +102,12 @@ async def review(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     is_renewal = proof.kind == PaymentProofKindChoices.RENEWAL
+    # Which of the buyer's services this was - the same "سرویس N" the bot's
+    # list shows - and its link, so they never have to guess.
+    label = await sync_to_async(service_label)(subscription)
+    link_line = (
+        f"\nلینک ساب: {subscription.subscription_link}" if subscription.subscription_link else ""
+    )
     if action == "approve":
         result_text = "✅ تایید شد و روی پنل اعمال شد."
         amounts = (
@@ -114,24 +121,29 @@ async def review(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "یکی از اون‌ها تموم بشه خودکار روی پنل اعمال میشه."
             )
             buyer_text = (
-                "🎉 تمدید سرویست تایید شد!\n"
+                f"🎉 تمدید {label} تایید شد!\n"
                 f"دوره جدید ({amounts}) به‌محض تموم شدن حجم یا روز فعلی خودکار فعال میشه."
                 " تا اون موقع از باقی‌مونده دوره فعلی استفاده کن."
+                f"{link_line}"
             )
         elif is_renewal:
             buyer_text = (
-                "🎉 تمدید سرویست تایید شد و فعال شد!\n"
+                f"🎉 تمدید {label} تایید شد و فعال شد!\n"
                 f"سرویست از نو {amounts} شارژ شد."
+                f"{link_line}"
             )
         else:
             buyer_text = (
-                "🎉 پرداختت تایید شد و سرویست فعال شد!\n"
+                f"🎉 پرداختت تایید شد و {label} فعال شد!\n"
                 f"لینک ساب: {subscription.subscription_link}\n"
                 f"مدت: {subscription.duration_days} روز"
             )
     else:
         result_text = "❌ رد شد."
-        buyer_text = "متاسفانه فیش پرداختت تایید نشد. لطفاً با پشتیبانی در تماس باش."
+        buyer_text = (
+            f"متاسفانه فیش پرداختت برای {label} تایید نشد."
+            " لطفاً با پشتیبانی در تماس باش."
+        )
 
     await _append_status(context, query, result_text)
 

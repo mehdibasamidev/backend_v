@@ -4,7 +4,7 @@ from telegram import (
     # KeyboardButton,
     # ReplyKeyboardMarkup,
 )
-from apps.bot.services.formatting import fa_price
+from apps.bot.services.formatting import fa_price, service_label
 from apps.vpn.models import VpnPlan
 # Step sizes for the custom-plan +/- steppers. GB uses the step configured in
 # VpnPricingConfig (gb_step); days/users don't have a configurable step yet,
@@ -31,7 +31,7 @@ def subscriptions_keyboard(subscriptions):
         if subscription.renewal["available"]:
             buttons.append([
                 InlineKeyboardButton(
-                    f"🔁 تمدید {subscription.label or (subscription.plan.name if subscription.plan else 'سرویس')}",
+                    f"🔁 تمدید {service_label(subscription, subscription.number, with_client=False)}",
                     callback_data=f"sub:renew:{subscription.id}",
                 )
             ])
