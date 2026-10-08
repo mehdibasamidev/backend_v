@@ -6,6 +6,9 @@ from telegram.ext import ContextTypes
 
 from apps.bot.services.formatting import (
     fa_price,
+    RLM,
+    client_tag,
+    rtl_line,
     service_code,
     service_label,
     service_name,
@@ -96,12 +99,13 @@ async def list_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE)
     lines = []
     for subscription in subs:
         status_fa = STATUS_LABELS_FA.get(subscription.status, subscription.status)
-        client = f"  ({subscription.xui_client_email})" if subscription.xui_client_email else ""
-        line = (
-            f"📦 سرویس {service_code(subscription.number)}{client}\n"
-            f"ℹ️ {service_name(subscription)}\n"
-            f"{status_fa}"
-        )
+        line = "\n".join([
+            rtl_line(f"📦 سرویس {service_code(subscription.number)}  {client_tag(subscription.xui_client_email)}"),
+            # RLM after the emoji too: "ℹ️" is itself a left-to-right
+            # character and would pull a leading "۲۰" in the name over to it.
+            rtl_line(f"ℹ️{RLM} {service_name(subscription)}"),
+            rtl_line(status_fa),
+        ])
         if subscription.status == "active":
             volume_text = (
                 "نامحدود"
