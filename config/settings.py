@@ -255,6 +255,11 @@ TELEGRAM_ADMIN_USER_IDS = config("TELEGRAM_ADMIN_USER_IDS", default="", cast=Csv
 # every reply the bot sends is a request FROM this server, which is the half
 # that fails from Iran.
 TELEGRAM_PROXY_URL = config("TELEGRAM_PROXY_URL", default="")
+# Long-polling periodically syncs active services and sends customer renewal
+# warnings. It is deliberately separate from the one-minute read-path sync.
+TELEGRAM_SUBSCRIPTION_MONITOR_INTERVAL_SECONDS = config(
+    "TELEGRAM_SUBSCRIPTION_MONITOR_INTERVAL_SECONDS", default=900, cast=int,
+)
 
 # The bot's @username is no longer a setting: see TelegramBotSettings (admin
 # panel "Settings" tab), which the bot container also fills in when it

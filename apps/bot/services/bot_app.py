@@ -195,7 +195,14 @@ def build_application(*, for_polling: bool = False) -> Application:
     application.add_handler(
         CallbackQueryHandler(
             subscriptions.list_subscriptions,
-            pattern=r"^menu:subscriptions$",
+            pattern=r"^(menu:subscriptions|sub:refresh)$",
+        )
+    )
+
+    application.add_handler(
+        CallbackQueryHandler(
+            subscriptions.start_renewal,
+            pattern=r"^sub:renew:",
         )
     )
 

@@ -14,10 +14,10 @@ def calculate_custom_plan_price(
     Always the single source of truth for custom plan pricing.
     Never trust a price sent from the client - only what this returns.
 
-    `apply_free_days` exists because free_days is a FIRST-PURCHASE
-    allowance. Charging renewals the same way made a 30-day renewal cost
-    nothing (billable_days = 30 - 30 = 0), which is fatal for a plan with
-    no volume to charge for either. Renewals pass False.
+    `apply_free_days=False` prices without the free-day allowance. Renewals
+    no longer use it: a renewal buys the same configuration again at the
+    purchase price (renewal_quote), and custom plans always carry volume,
+    so the allowance can't make one free.
     """
     config = VpnPricingConfig.get_active()
 
@@ -44,58 +44,59 @@ def calculate_custom_plan_price(
     return price.quantize(Decimal("0.01"))
 
 
-def resolve_renewal(subscription, periods=None, extra_days=None, extra_gb=None):
+class RenewalUnavailable(BadRequestException):
+    """`reason` is a stable code the bot and the app translate."""
+
+    def __init__(self, reason, message):
+        self.reason = reason
+        super().__init__(message)
+
+
+def renewal_quote(subscription):
     """
-    Works out what a renewal actually adds, and what it costs.
-    Returns (extra_days, extra_gb, price).
+    What renewing this service buys, and what it costs: (days, gb, price).
 
-    A subscription bought from a fixed plan renews in whole plan periods
-    priced at the plan's CURRENT price - not via the custom-plan formula.
-    That keeps admin price changes authoritative and stops unlimited plans
-    (no volume, and free_days swallowing the duration) from renewing for
-    almost nothing.
+    One rule for the bot and the app: a renewal buys the service's own plan
+    again at today's price, and resets the service to exactly that (see
+    provisioning.reset_subscription_period). No periods, no sliders.
 
-    Custom subscriptions keep their sliders, but are priced with no
-    free-day allowance for the same reason.
+      * Fixed plan - the plan's CURRENT days, GB and price, so an admin's
+        edit to the plan applies to renewals too. A deactivated or deleted
+        plan can't be renewed: it is no longer for sale, so the customer
+        buys a current plan instead.
+      * Custom - the days/GB/users that were bought, priced exactly as
+        buying that configuration today would be (same formula, same
+        free-day allowance - a renewal IS buying it again).
     """
-    plan = subscription.plan
+    from apps.vpn.models import PlanSourceChoices
 
-    if plan is not None and plan.is_active:
-        count = periods or 1
+    if subscription.source == PlanSourceChoices.FIXED:
+        plan = subscription.plan
+        if plan is None or not plan.is_active:
+            raise RenewalUnavailable(
+                "plan_retired",
+                "This plan is no longer sold, so it can't be renewed. Please buy one of the current plans.",
+            )
         return (
-            plan.duration_days * count,
-            0 if plan.is_unlimited_volume else plan.volume_gb * count,
-            (plan.price * count).quantize(Decimal("0.01")),
+            plan.duration_days,
+            0 if plan.is_unlimited_volume else plan.volume_gb,
+            plan.price.quantize(Decimal("0.01")),
         )
 
-    # Custom, or the original plan is gone/retired - fall back to the
-    # snapshot on the subscription and current unit rates.
-    days = extra_days if extra_days is not None else subscription.duration_days
-    if subscription.is_unlimited_volume:
-        gb = 0
-    else:
-        gb = extra_gb if extra_gb is not None else subscription.volume_gb
-
-    users = max(subscription.max_concurrent_users, 1)
-
-    if gb == 0:
-        # Duration-only top-up: the volume validation in
-        # calculate_custom_plan_price would reject 0, so price the pieces
-        # that apply directly.
-        config = VpnPricingConfig.get_active()
-        if days <= 0:
-            raise BadRequestException("Add at least some days or volume.")
-        price = (
-            config.base_price
-            + (Decimal(days) * config.price_per_extra_days)
-            + (Decimal(max(users - 1, 0)) * config.price_per_extra_user)
-        ).quantize(Decimal("0.01"))
-        return days, 0, price
-
-    price = calculate_custom_plan_price(
-        volume_gb=gb,
-        duration_days=days,
-        max_concurrent_users=users,
-        apply_free_days=False,
-    )
-    return days, gb, price
+    volume_gb = subscription.purchased_volume_gb
+    if volume_gb is None:
+        volume_gb = subscription.volume_gb
+    try:
+        price = calculate_custom_plan_price(
+            volume_gb=volume_gb,
+            duration_days=subscription.duration_days,
+            max_concurrent_users=max(subscription.max_concurrent_users, 1),
+        )
+    except (BadRequestException, ValueError) as exc:
+        # The pricing ranges were changed since this was bought (or there is
+        # no active pricing config): the same configuration can't be sold.
+        raise RenewalUnavailable(
+            "pricing_unavailable",
+            f"This custom service can't be renewed with the current pricing: {exc}",
+        ) from exc
+    return subscription.duration_days, volume_gb, price

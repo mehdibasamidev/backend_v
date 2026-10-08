@@ -23,6 +23,22 @@ _MAX_EMAIL_ATTEMPTS = 12
 _MAX_BASE_LENGTH = 32
 
 
+_GB = 1024 ** 3
+
+
+def _whole_gb(total_bytes):
+    """
+    The panel quota as whole GB for volume_gb. 0 stays 0 (unlimited), but
+    anything above 0 is at least 1: floor division turned a 0.6 GB quota
+    into 0, which this project reads as UNLIMITED - exactly when the
+    customer is about to run out. The exact figure lives in
+    total_traffic_bytes.
+    """
+    if not total_bytes:
+        return 0
+    return max(total_bytes // _GB, 1)
+
+
 def _build_subscription_link(sub_id):
     base = getattr(settings, "XUI_SUBSCRIPTION_BASE_URL", "").rstrip("/")
     if not base or not sub_id:
@@ -168,6 +184,7 @@ def activate_subscription(subscription):
     subscription.xui_client_subid = xui_client.get("subId", "")
     subscription.xui_inbound_ids = inbound_ids
     subscription.subscription_link = _build_subscription_link(subscription.xui_client_subid)
+    subscription.total_traffic_bytes = total_gb_bytes
     subscription.started_at = now
     subscription.expires_at = expires_at
     subscription.status = SubscriptionStatusChoices.ACTIVE
@@ -177,8 +194,8 @@ def activate_subscription(subscription):
     # back, leaving a paid service on a deactivated account.
     subscription.save(update_fields=[
         "xui_client_email", "xui_client_uuid", "xui_client_subid",
-        "xui_inbound_ids", "subscription_link", "started_at", "expires_at",
-        "status", "updated_at",
+        "xui_inbound_ids", "subscription_link", "total_traffic_bytes",
+        "started_at", "expires_at", "status", "updated_at",
     ])
     return subscription
 
@@ -189,125 +206,131 @@ def reject_subscription(subscription):
     return subscription
 
 
-# Fields the panel manages itself. get_client returns them, but the update
-# endpoint uses a different struct and rejects them - notably `id`, which is
-# the numeric DB row id on read while update expects a string there. Echoing
-# it back produced:
-#   json: cannot unmarshal number into Go struct field Client.id of type string
-#
-# Casting it to "56" would silence the error and is exactly the wrong fix:
-# in the classic 3x-ui schema `id` IS the protocol UUID, so writing a row id
-# into it can rewrite the client's identity and break their existing links.
-# Dropping it is safe - the URL already identifies the client by email, and
-# `uuid` travels in its own field.
-def extend_subscription(subscription, extra_days=0, extra_gb=0):
-    """
-    Applies an approved renewal on the panel.
-
-    Days are RESET, not added: a renewal always buys exactly the window that
-    was paid for, starting now. This cuts both ways - renewing while time is
-    still on the clock discards the remainder. Deliberate: the rule stays "a
-    renewal is exactly N days from today", and the UI warns before they
-    confirm.
-
-    Volume is CARRIED OVER: whatever is left is added to the new allowance
-    and the counters start at zero. Nineteen of twenty gigabytes used plus a
-    twenty gigabyte renewal becomes twenty-one gigabytes with nothing spent.
-
-    Both are expressed as deltas fed to bulkAdjust rather than absolute
-    values written with updateClient. updateClient replaces the whole row,
-    which means echoing back the object read from getClient - and the two
-    endpoints do not share a schema, so every mismatched field surfaces as
-    its own `cannot unmarshal ... into Go struct field Client.X` error.
-    Deltas avoid sending a client payload at all.
-    """
-    if not subscription.xui_client_email:
-        raise ValueError("Subscription has no provisioned client to extend")
-
-    client = ThreeXUiClient()
-    email = subscription.xui_client_email
-
+def _read_panel_client(client, email):
     details = client.get_client(email)
     panel_client = details.get("client") or {}
     if not panel_client:
         raise AppException(
             f"Client '{email}' was not found on the panel, so it cannot be renewed."
         )
+    return details, panel_client
 
-    used_bytes = details.get("usedTraffic") or 0
+
+def panel_period_used_up(details, now=None):
+    """
+    True when the panel says the current period is over: the quota is
+    spent or the expiry has passed. This, not our synced copy, decides
+    whether an approved renewal starts now or waits in the queue.
+    """
+    now = now or timezone.now()
+    panel_client = details.get("client") or {}
+    total = panel_client.get("totalGB") or 0
+    used = details.get("usedTraffic") or 0
+    expiry_ms = panel_client.get("expiryTime") or 0
+    if total > 0 and used >= total:
+        return True
+    return 0 < expiry_ms <= int(now.timestamp() * 1000)
+
+
+def subscription_period_used_up(subscription):
+    """Live panel check for one provisioned subscription (network only)."""
+    details = ThreeXUiClient().get_client(subscription.xui_client_email)
+    return panel_period_used_up(details)
+
+
+def reset_subscription_period(subscription, days, gb):
+    """
+    Applies a renewal: the client gets EXACTLY `gb` and `days` from now -
+    nothing left over from the previous period is carried across, in either
+    direction. That is the business rule: whatever was left belonged to the
+    period that was paid for before.
+
+    Expressed as deltas for bulkAdjust (current -> target) plus a traffic
+    reset, rather than an absolute updateClient: updateClient replaces the
+    whole row and its write schema differs from what getClient returns, so
+    echoing a fetched client back fails field by field. Deltas send no
+    client payload at all.
+
+    Re-enables the client afterwards: the panel switches a client off when
+    its quota or time runs out, and a renewal that left it off would take
+    the money and still not connect.
+    """
+    if not subscription.xui_client_email:
+        raise ValueError("Subscription has no provisioned client to renew")
+
+    client = ThreeXUiClient()
+    email = subscription.xui_client_email
+    details, panel_client = _read_panel_client(client, email)
+
     current_total = panel_client.get("totalGB") or 0
     current_expiry_ms = panel_client.get("expiryTime") or 0
-
     now = timezone.now()
 
-    # --- expiry delta ---
-    # bulkAdjust skips clients with expiryTime == 0 (never expires), which is
-    # what we want - adding a window there would be a downgrade.
-    if current_expiry_ms == 0:
+    # --- expiry: target is now + days ---
+    # bulkAdjust ignores expiryTime == 0 (never expires); a client set up
+    # that way by hand keeps it.
+    if current_expiry_ms == 0 or days == 0:
         add_days = 0
-        new_expires_at = None
-    else:
-        target = now + timedelta(days=extra_days)
-        current_expires_at = datetime.fromtimestamp(
+        new_expires_at = None if current_expiry_ms == 0 else datetime.fromtimestamp(
             current_expiry_ms / 1000, tz=dt_timezone.utc
         )
-        delta_seconds = (target - current_expires_at).total_seconds()
-        # Round up so the rounding to whole days never costs the customer
-        # time - at worst they get a few hours extra.
+    else:
+        current_expires_at = datetime.fromtimestamp(current_expiry_ms / 1000, tz=dt_timezone.utc)
+        delta_seconds = (now + timedelta(days=days) - current_expires_at).total_seconds()
+        # Whole days only. Rounded up so the rounding never costs the
+        # customer time; at worst they get part of a day extra.
         add_days = math.ceil(delta_seconds / 86400)
         new_expires_at = current_expires_at + timedelta(days=add_days)
 
-    # --- quota delta ---
-    # total becomes (total - used) + extra, i.e. leftover plus the new
-    # allowance. bulkAdjust skips totalGB == 0 (unlimited), so an unlimited
-    # client is left alone automatically.
+    # --- quota: target is exactly gb (0 = unlimited) ---
+    target_total = gb * _GB
     if current_total == 0:
-        add_bytes = 0
-        new_total = 0
-        reset_traffic = False
-    else:
-        extra_bytes = extra_gb * (1024 ** 3)
-        add_bytes = extra_bytes - used_bytes
-        new_total = current_total + add_bytes
-        reset_traffic = True
-
-    if add_days == 0 and add_bytes == 0 and not reset_traffic:
-        # Nothing the panel can act on - an unlimited-everything client.
-        subscription.status = SubscriptionStatusChoices.ACTIVE
-        subscription.save(update_fields=["status", "updated_at"])
-        return subscription
-
-    client.bulk_adjust(emails=[email], add_days=add_days, add_bytes=add_bytes)
-
-    if reset_traffic:
-        try:
-            client.bulk_reset_traffic([email])
-        except Exception:
-            # The two calls are not atomic. Leaving the raised quota with the
-            # old meter would quietly shortchange the customer, so undo the
-            # adjustment and let the renewal be retried.
-            logger.exception(
-                "Traffic reset failed for %s during renewal; reverting adjustment",
-                email,
+        if target_total != 0:
+            # bulkAdjust skips unlimited clients, so it can't put a cap on one.
+            raise AppException(
+                f"Client '{email}' is unlimited on the panel but the plan has a "
+                f"{gb} GB quota. Set the quota on the panel by hand, then approve again."
             )
+        add_bytes = 0
+    else:
+        if target_total == 0:
+            raise AppException(
+                f"The plan is now unlimited but client '{email}' has a quota on the "
+                "panel. Remove the quota on the panel by hand, then approve again."
+            )
+        add_bytes = target_total - current_total
+
+    if add_days or add_bytes:
+        client.bulk_adjust(emails=[email], add_days=add_days, add_bytes=add_bytes)
+    try:
+        client.bulk_reset_traffic([email])
+        client.bulk_enable([email])
+    except Exception:
+        # Not atomic with the adjustment. Leaving the new quota on top of the
+        # old meter would shortchange the customer, so undo the adjustment
+        # and let the approval be retried.
+        logger.exception("Traffic reset/enable failed for %s during renewal; reverting", email)
+        if add_days or add_bytes:
             try:
-                client.bulk_adjust(
-                    emails=[email], add_days=-add_days, add_bytes=-add_bytes
-                )
+                client.bulk_adjust(emails=[email], add_days=-add_days, add_bytes=-add_bytes)
             except Exception:
                 logger.exception("Adjustment revert also failed for %s", email)
-            raise
+        raise
 
-    subscription.volume_gb = 0 if new_total == 0 else new_total // (1024 ** 3)
-    subscription.used_traffic_bytes = 0 if reset_traffic else used_bytes
+    subscription.volume_gb = _whole_gb(target_total)
+    subscription.total_traffic_bytes = target_total
+    subscription.used_traffic_bytes = 0
     subscription.expires_at = new_expires_at
     subscription.last_synced_at = now
     subscription.status = SubscriptionStatusChoices.ACTIVE
+    subscription.expiry_reminder_sent_at = None
+    subscription.low_volume_reminder_sent_at = None
     # Only what this function set - see activate_subscription: a full save
     # after the panel calls could undo a merge that moved the subscription.
     subscription.save(update_fields=[
-        "volume_gb", "used_traffic_bytes", "expires_at", "last_synced_at",
-        "status", "updated_at",
+        "volume_gb", "total_traffic_bytes", "used_traffic_bytes", "expires_at",
+        "last_synced_at", "status", "expiry_reminder_sent_at",
+        "low_volume_reminder_sent_at", "updated_at",
     ])
     return subscription
 
@@ -355,7 +378,10 @@ def apply_traffic_to_subscription(subscription, traffic):
     # --- quota (bytes; 0 means unlimited, same convention as ours) ---
     total_bytes = traffic.get("total")
     if total_bytes is not None:
-        panel_volume_gb = 0 if total_bytes == 0 else total_bytes // (1024 ** 3)
+        if total_bytes != subscription.total_traffic_bytes:
+            subscription.total_traffic_bytes = total_bytes
+            updated_fields.append("total_traffic_bytes")
+        panel_volume_gb = _whole_gb(total_bytes)
         if panel_volume_gb != subscription.volume_gb:
             subscription.volume_gb = panel_volume_gb
             updated_fields.append("volume_gb")

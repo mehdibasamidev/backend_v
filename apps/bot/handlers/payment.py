@@ -5,7 +5,7 @@ from telegram.ext import ContextTypes
 
 from apps.vpn.models import PaymentProofSourceChoices
 from apps.vpn.services.ai_receipt import analyze_payment_receipt
-from apps.vpn.services.checkout import create_paid_order
+from apps.vpn.services.checkout import create_paid_order, create_renewal_order
 from apps.bot.handlers.referral import try_handle_referral_code
 from apps.bot.services.proof_notifier import notify_admins_of_proof
 from apps.bot.services.registration import get_or_create_telegram_user
@@ -15,14 +15,18 @@ def _parse_awaiting(action: str):
     """
     'checkout:fixed:<plan_id>'            -> dict for a fixed plan
     'checkout:custom:<gb>:<days>:<users>' -> dict for a custom plan
+    'renew:<subscription_id>'              -> dict for one normal renewal
     """
     parts = action.split(":")
+    if parts[0] == "renew" and len(parts) == 2:
+        return {"kind": "renewal", "subscription_id": parts[1]}
     if len(parts) < 3 or parts[0] != "checkout":
         return None
     if parts[1] == "fixed":
-        return {"plan_id": parts[2]}
+        return {"kind": "purchase", "plan_id": parts[2]}
     if parts[1] == "custom" and len(parts) == 5:
         return {
+            "kind": "purchase",
             "volume_gb": int(parts[2]),
             "duration_days": int(parts[3]),
             "max_concurrent_users": int(parts[4]),
@@ -75,13 +79,23 @@ async def receive_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     def _create():
         image = ContentFile(image_bytes, name=f"{file_id}.jpg") if image_bytes else None
-        subscription, proof = create_paid_order(
-            user=profile.user,
-            receipt_image=image,
-            receipt_text=receipt_text,
-            source=PaymentProofSourceChoices.BOT,
-            **order,
-        )
+        if order["kind"] == "renewal":
+            subscription, proof = create_renewal_order(
+                user=profile.user,
+                subscription_id=order["subscription_id"],
+                receipt_image=image,
+                receipt_text=receipt_text,
+                source=PaymentProofSourceChoices.BOT,
+            )
+        else:
+            purchase = {key: value for key, value in order.items() if key != "kind"}
+            subscription, proof = create_paid_order(
+                user=profile.user,
+                receipt_image=image,
+                receipt_text=receipt_text,
+                source=PaymentProofSourceChoices.BOT,
+                **purchase,
+            )
         profile.clear_awaiting_action()
         return subscription, proof
 
@@ -96,7 +110,12 @@ async def receive_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         pass  # AI review is best-effort only - never block the flow on it
 
-    await update.message.reply_text("فیش دریافت شد ✅ به‌محض تایید ادمین، سرویس فعال میشه.")
+    message = (
+        "فیش تمدید دریافت شد ✅ به‌محض تایید ادمین، تمدید روی سرویس اعمال میشه."
+        if proof.kind == "renewal"
+        else "فیش دریافت شد ✅ به‌محض تایید ادمین، سرویس فعال میشه."
+    )
+    await update.message.reply_text(message)
     # Sent right away instead of waiting for the poller; a transient
     # Telegram failure releases the claim and the poller retries it.
     await notify_admins_of_proof(context.bot, proof.id)

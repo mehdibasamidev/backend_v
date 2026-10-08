@@ -103,10 +103,25 @@ async def review(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_renewal = proof.kind == PaymentProofKindChoices.RENEWAL
     if action == "approve":
         result_text = "✅ تایید شد و روی پنل اعمال شد."
-        if is_renewal:
+        amounts = (
+            f"{'حجم نامحدود' if proof.extra_gb == 0 else f'{proof.extra_gb} گیگ'}"
+            f" / {proof.extra_days} روز"
+        )
+        if is_renewal and proof.applied_at is None:
+            # Queued: the current period still has volume and days left.
+            result_text = (
+                "✅ تایید شد. هنوز از دوره فعلی حجم و روز مونده؛ تمدید وقتی "
+                "یکی از اون‌ها تموم بشه خودکار روی پنل اعمال میشه."
+            )
             buyer_text = (
                 "🎉 تمدید سرویست تایید شد!\n"
-                f"مدت جدید: {subscription.remaining_days} روز باقی‌مانده"
+                f"دوره جدید ({amounts}) به‌محض تموم شدن حجم یا روز فعلی خودکار فعال میشه."
+                " تا اون موقع از باقی‌مونده دوره فعلی استفاده کن."
+            )
+        elif is_renewal:
+            buyer_text = (
+                "🎉 تمدید سرویست تایید شد و فعال شد!\n"
+                f"سرویست از نو {amounts} شارژ شد."
             )
         else:
             buyer_text = (

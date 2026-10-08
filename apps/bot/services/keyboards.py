@@ -23,6 +23,23 @@ def main_menu_keyboard():
     ])
 
 
+def subscriptions_keyboard(subscriptions):
+    """Per-service actions; callback payloads stay below Telegram's 64-byte limit."""
+    buttons = []
+    for subscription in subscriptions:
+        # renewal_info is attached by handlers/subscriptions.list_subscriptions.
+        if subscription.renewal["available"]:
+            buttons.append([
+                InlineKeyboardButton(
+                    f"🔁 تمدید {subscription.label or (subscription.plan.name if subscription.plan else 'سرویس')}",
+                    callback_data=f"sub:renew:{subscription.id}",
+                )
+            ])
+    buttons.append([InlineKeyboardButton("🔄 بروزرسانی مصرف", callback_data="sub:refresh")])
+    buttons.append([InlineKeyboardButton("⬅️ برگشت", callback_data="menu:main")])
+    return InlineKeyboardMarkup(buttons)
+
+
 # def main_reply_keyboard():
 #     return ReplyKeyboardMarkup(
 #         [

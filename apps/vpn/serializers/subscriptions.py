@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from apps.vpn.models import UserVpnSubscription
+from apps.vpn.services.checkout import renewal_info
 
 
 class OwnPaymentProofSerializer(serializers.Serializer):
@@ -82,34 +83,26 @@ class UserVpnSubscriptionSerializer(serializers.ModelSerializer):
 
     def get_renewal(self, obj):
         """
-        Tells the client how this particular service renews, so it doesn't
-        have to reimplement the rule.
+        How this service renews, from the same rule the bot uses
+        (checkout.renewal_info): the service's own plan at today's price,
+        resetting volume and days. "starts" previews whether an approval
+        now would apply at once or wait for the current period to end.
 
-        mode="periods": bought from a still-active fixed plan, so it renews
-        in whole plan periods at the plan's CURRENT price - which is what
-        keeps an admin price change authoritative.
-
-        mode="custom": custom-built, or the original plan was retired. The
-        client picks days/GB and the server prices them at current unit
-        rates with no free-day allowance (that allowance is a
-        first-purchase thing; applying it to renewals made a 30-day top-up
-        cost nothing).
+        mode/period_* stay for app builds that predate this rule; such a
+        build may still offer "2 periods", but the server charges and
+        grants one.
         """
-        plan = obj.plan
-        if plan is not None and plan.is_active:
-            return {
-                "mode": "periods",
-                "period_days": plan.duration_days,
-                "period_volume_gb": 0 if plan.is_unlimited_volume else plan.volume_gb,
-                "period_price": str(plan.price),
-                "is_unlimited_volume": plan.is_unlimited_volume,
-            }
+        info = renewal_info(obj)
         return {
-            "mode": "custom",
-            "period_days": obj.duration_days,
-            "period_volume_gb": 0 if obj.is_unlimited_volume else obj.volume_gb,
-            "period_price": None,
-            "is_unlimited_volume": obj.is_unlimited_volume,
+            "mode": "periods",
+            "period_days": info["days"],
+            "period_volume_gb": info["volume_gb"],
+            "period_price": str(info["price"]) if info["price"] is not None else None,
+            "is_unlimited_volume": info["volume_gb"] == 0,
+            "available": info["available"],
+            "unavailable_reason": info["unavailable_reason"],
+            "starts": info["starts"],
+            "queued_renewal": info["queued_renewal"],
         }
 
     def get_latest_proof(self, obj):

@@ -5,16 +5,14 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.renderers import JSONRenderer
 from drf_yasg.utils import swagger_auto_schema
 
-from apps.vpn.models import (
-    UserVpnSubscription,
-    PaymentProof,
-    PaymentProofKindChoices,
-    PaymentProofSourceChoices,
-)
+from apps.vpn.models import PaymentProofSourceChoices
 from apps.vpn.serializers.subscriptions import UserVpnSubscriptionSerializer
 from apps.vpn.services.ai_receipt import analyze_payment_receipt
-from apps.vpn.services.checkout import create_paid_order
-from apps.vpn.services.pricing import resolve_renewal
+from apps.vpn.services.checkout import (
+    create_paid_order,
+    create_renewal_order,
+    current_period_used_up,
+)
 from config.utils.custom_serializers import create_response_serializer
 from config.utils.exceptions import AppException
 from config.utils.response import (
@@ -119,38 +117,13 @@ class CheckoutView(APIView):
 
 class RenewalSerializer(serializers.Serializer):
     """
-    Two shapes, depending on where the service came from:
-
-      * fixed plan  -> `periods`: how many whole plan periods to add.
-      * custom      -> `extra_days` / `extra_gb`.
-
-    The client doesn't have to guess which: the subscription serializer
-    exposes a `renewal.mode` field. Whatever arrives, the price is resolved
-    server-side by resolve_renewal().
+    Only the receipt. What a renewal buys and costs is not the customer's
+    choice: renewal_quote decides both (the service's own plan at today's
+    price). Older app builds still send periods/extra_days/extra_gb; they
+    are ignored rather than rejected so those builds keep working.
     """
-    # Capped at two periods - a longer prepayment ties up a service the
-    # customer may not want that far ahead, and the panel quota grows with
-    # every renewal anyway.
-    periods = serializers.IntegerField(min_value=1, max_value=2, required=False)
-    extra_days = serializers.IntegerField(min_value=0, required=False)
-    extra_gb = serializers.IntegerField(min_value=0, required=False)
     receipt_image = serializers.FileField(required=False)
     receipt_text = serializers.CharField(required=False, allow_blank=True)
-
-    def __init__(self, *args, subscription=None, **kwargs):
-        self.subscription = subscription
-        super().__init__(*args, **kwargs)
-
-    def validate_extra_gb(self, value):
-        # An unlimited client has totalGB=0 on the panel, and bulkAdjust
-        # explicitly skips the traffic field for those - selling volume
-        # would take the money and change nothing.
-        if value and self.subscription and self.subscription.is_unlimited_volume:
-            raise serializers.ValidationError(
-                "This service already has unlimited data, so extra volume "
-                "cannot be added. Renew the duration instead."
-            )
-        return value
 
     def validate(self, attrs):
         if not attrs.get("receipt_image") and not attrs.get("receipt_text"):
@@ -162,9 +135,10 @@ class RenewalSerializer(serializers.Serializer):
 
 class RenewSubscriptionView(APIView):
     """
-    Tops up an existing subscription. Same manual-payment flow as a
-    purchase: submit the receipt here, an admin approves, and only then is
-    the panel client actually extended.
+    Renews a service: same manual-payment flow as a purchase, through the
+    same service the Telegram bot uses. An admin approves; the service is
+    then reset to exactly the plan's GB and days - immediately if the
+    current period has run out, otherwise as soon as it does.
     """
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser]
@@ -172,55 +146,21 @@ class RenewSubscriptionView(APIView):
 
     @swagger_auto_schema(request_body=RenewalSerializer)
     def post(self, request, subscription_id):
-        try:
-            subscription = UserVpnSubscription.objects.select_related("plan").get(
-                id=subscription_id, user=request.user,
-            )
-        except UserVpnSubscription.DoesNotExist:
-            return BadRequestResponse(message="Subscription not found")
-
-        if not subscription.xui_client_email:
-            return BadRequestResponse(
-                message="This subscription hasn't been activated yet, so it can't be renewed"
-            )
-
-        if subscription.payment_proofs.filter(is_approved__isnull=True).exists():
-            return BadRequestResponse(
-                message="You already have a payment awaiting review for this subscription"
-            )
-
-        serializer = RenewalSerializer(data=request.data, subscription=subscription)
+        serializer = RenewalSerializer(data=request.data)
         if not serializer.is_valid():
             return BadRequestResponse(errors=serializer.errors)
-
         data = serializer.validated_data
 
         try:
-            extra_days, extra_gb, price = resolve_renewal(
-                subscription,
-                periods=data.get("periods"),
-                extra_days=data.get("extra_days"),
-                extra_gb=data.get("extra_gb"),
-            )
-        except AppException as e:
-            return BadRequestResponse(message=e.message)
-
-        if extra_days <= 0 and extra_gb <= 0:
-            return BadRequestResponse(message="Add at least some days or volume.")
-
-        try:
-            proof = PaymentProof.objects.create(
-                subscription=subscription,
-                kind=PaymentProofKindChoices.RENEWAL,
-                amount=price,
-                extra_days=extra_days,
-                extra_gb=extra_gb,
+            subscription, proof = create_renewal_order(
+                user=request.user,
+                subscription_id=subscription_id,
                 receipt_image=data.get("receipt_image"),
                 receipt_text=data.get("receipt_text", ""),
                 source=PaymentProofSourceChoices.APP,
             )
-        except Exception as e:
-            return ServerErrorResponse(errors=str(e))
+        except AppException as e:
+            return BadRequestResponse(message=e.message)
 
         # The bot container announces this proof to the admins (outbox).
         try:
@@ -230,9 +170,10 @@ class RenewSubscriptionView(APIView):
 
         return SuccessResponse(
             data={
-                "amount": str(price),
-                "extra_days": extra_days,
-                "extra_gb": extra_gb,
+                "amount": str(proof.amount),
+                "extra_days": proof.extra_days,
+                "extra_gb": proof.extra_gb,
+                "starts": "now" if current_period_used_up(subscription) else "after_current",
             },
             message="Renewal submitted. An admin will review your payment shortly.",
         )

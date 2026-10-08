@@ -110,8 +110,8 @@ class ThreeXUiClient:
         )
 
     def bulk_reset_traffic(self, emails):
-        """Zeroes up/down counters. Renewals carry the leftover quota over
-        as fresh allowance instead, so the counters start clean."""
+        """Zeroes up/down counters. A renewal resets the client to exactly
+        the renewed quota, so the meter starts clean."""
         return self._request(
             "POST",
             "/panel/api/clients/bulkResetTraffic",

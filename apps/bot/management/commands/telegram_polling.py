@@ -8,6 +8,7 @@ from django.core.management.base import BaseCommand
 from apps.bot.services.bot_app import build_application
 from apps.bot.services.bot_settings import arecord_running_bot_until_done
 from apps.bot.services.proof_notifier import run_proof_notifier
+from apps.bot.services.subscription_monitor import run_subscription_monitor
 
 
 logger = logging.getLogger("apps")
@@ -100,6 +101,13 @@ class Command(BaseCommand):
                 run_proof_notifier(application.bot)
             )
 
+            # Reads the authoritative traffic/expiry values from 3x-ui and
+            # sends the customer one reminder per renewal cycle when either
+            # threshold is reached.
+            subscription_monitor = asyncio.create_task(
+                run_subscription_monitor(application.bot)
+            )
+
             # initialize() (entering the block) ran getMe, so the bot knows
             # its own username. Recorded for the web container, which
             # builds the "Login with Telegram" links and never talks to
@@ -136,10 +144,13 @@ class Command(BaseCommand):
             finally:
                 username_recorder.cancel()
                 notifier.cancel()
+                subscription_monitor.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await username_recorder
                 with contextlib.suppress(asyncio.CancelledError):
                     await notifier
+                with contextlib.suppress(asyncio.CancelledError):
+                    await subscription_monitor
 
                 # Stop polling cleanly when the process receives
                 # a shutdown signal.

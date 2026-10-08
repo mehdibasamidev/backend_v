@@ -1,3 +1,4 @@
+import math
 import os
 import uuid
 from decimal import Decimal
@@ -212,6 +213,11 @@ class UserVpnSubscription(models.Model):
     # Snapshot values copied at purchase time, so later plan/price edits
     # never affect subscriptions that were already purchased.
     volume_gb = models.PositiveIntegerField()
+    # What was bought, in whole GB - never touched by panel syncs. volume_gb
+    # follows the panel (an admin may change a client there), so a custom
+    # service's renewal is priced from this instead; for a fixed plan the
+    # renewal follows the plan's CURRENT definition. 0 = unlimited.
+    purchased_volume_gb = models.PositiveIntegerField(null=True, blank=True)
     duration_days = models.PositiveIntegerField()
     max_concurrent_users = models.PositiveIntegerField()
     price = models.DecimalField(max_digits=12, decimal_places=2)
@@ -224,9 +230,21 @@ class UserVpnSubscription(models.Model):
 
     # Usage bookkeeping (synced from the 3x-ui panel)
     used_traffic_bytes = models.BigIntegerField(default=0)
+    # The panel's exact quota in bytes (0 = unlimited). volume_gb holds whole
+    # GB only, and a renewal carries the leftover over, so the panel quota is
+    # rarely a whole number of GB - computing "remaining" from volume_gb
+    # showed up to a GB less than the panel. Null until the first sync after
+    # this field was added; remaining_volume_gb falls back to volume_gb then.
+    total_traffic_bytes = models.BigIntegerField(null=True, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
     expires_at = models.DateTimeField(null=True, blank=True)
     last_synced_at = models.DateTimeField(null=True, blank=True)
+
+    # Per-renewal-cycle Telegram reminders. A successful renewal clears both
+    # values, so the next allowance can warn once again without spamming the
+    # customer every time the monitor runs.
+    expiry_reminder_sent_at = models.DateTimeField(null=True, blank=True)
+    low_volume_reminder_sent_at = models.DateTimeField(null=True, blank=True)
 
     # 3x-ui panel linkage
     xui_inbound_ids = models.JSONField(default=list, blank=True)
@@ -253,8 +271,14 @@ class UserVpnSubscription(models.Model):
     def remaining_days(self):
         if not self.expires_at:
             return self.duration_days
-        remaining = (self.expires_at - timezone.now()).days
-        return max(remaining, 0)
+        # Nearest whole day, not floor: a service activated for 30 days a
+        # minute ago showed 29. Not ceil either: a renewal rounds the added
+        # time UP to whole days (reset_subscription_period), so ceil showed 31.
+        # Anything still running shows at least 1, never "0 days left".
+        seconds = (self.expires_at - timezone.now()).total_seconds()
+        if seconds <= 0:
+            return 0
+        return max(math.floor(seconds / 86400 + 0.5), 1)
 
     @property
     def is_unlimited_volume(self):
@@ -270,7 +294,9 @@ class UserVpnSubscription(models.Model):
     def remaining_volume_gb(self):
         if self.is_unlimited_volume:
             return None
-        total_bytes = self.volume_gb * (1024 ** 3)
+        total_bytes = self.total_traffic_bytes
+        if total_bytes is None:
+            total_bytes = self.volume_gb * (1024 ** 3)
         remaining = total_bytes - self.used_traffic_bytes
         return max(round(remaining / (1024 ** 3), 2), 0)
 
@@ -377,6 +403,11 @@ class PaymentProof(models.Model):
     # top of whatever the client currently has on the panel.
     extra_days = models.PositiveIntegerField(default=0)
     extra_gb = models.PositiveIntegerField(default=0)
+    # When the approved change actually reached the panel. A renewal
+    # approved while the current period still has BOTH volume and days left
+    # is queued instead: approved, applied_at null, and the bot container's
+    # monitor applies it the moment that period runs out.
+    applied_at = models.DateTimeField(null=True, blank=True)
 
     # Private bucket: these are bank documents, served only through
     # PaymentReceiptView after a permission check - never a direct URL.
