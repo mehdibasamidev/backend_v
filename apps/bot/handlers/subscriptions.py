@@ -5,14 +5,13 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from apps.bot.services.formatting import (
-    fa_price,
     RLM,
-    client_tag,
+    client_name,
+    fa_number,
+    fa_price,
     rtl_line,
-    service_code,
     service_label,
     service_name,
-    service_numbers,
 )
 from apps.bot.services.keyboards import main_menu_keyboard, subscriptions_keyboard
 from apps.bot.services.registration import get_or_create_telegram_user
@@ -64,10 +63,8 @@ async def list_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE)
         # active services from 3x-ui before rendering; it is throttled to one
         # panel request/minute per service to protect the panel on refreshes.
         subscriptions = lazy_sync(subscriptions)
-        numbers = service_numbers(profile.user_id)
         for subscription in subscriptions:
             subscription.renewal = renewal_info(subscription)
-            subscription.number = numbers.get(subscription.id)
         return subscriptions
 
     subs = await sync_to_async(_get)()
@@ -99,22 +96,25 @@ async def list_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE)
     lines = []
     for subscription in subs:
         status_fa = STATUS_LABELS_FA.get(subscription.status, subscription.status)
-        line = "\n".join([
-            rtl_line(f"📦 سرویس {service_code(subscription.number)}  {client_tag(subscription.xui_client_email)}"),
-            # RLM after the emoji too: "ℹ️" is itself a left-to-right
-            # character and would pull a leading "۲۰" in the name over to it.
-            rtl_line(f"ℹ️{RLM} {service_name(subscription)}"),
-            rtl_line(status_fa),
-        ])
+        rows = []
+        if subscription.xui_client_email:
+            rows.append(rtl_line(f"🆔{RLM}  {client_name(subscription.xui_client_email)}"))
+        # RLM after the emoji too: "ℹ️" is itself a left-to-right
+        # character and would pull a leading "۲۰" in the name over to it.
+        rows.append(rtl_line(f"ℹ️{RLM} {service_name(subscription)}"))
+        rows.append(rtl_line(status_fa.replace(" ", "  ", 1)))
         if subscription.status == "active":
             volume_text = (
-                "نامحدود"
+                "حجم نامحدود"
                 if subscription.is_unlimited_volume
-                else f"{subscription.remaining_volume_gb} گیگ باقی‌مونده"
+                else f"{fa_number(subscription.remaining_volume_gb)} گیگ باقی‌مونده"
             )
-            line += f"\n{volume_text} | {subscription.remaining_days} روز باقی‌مونده"
+            rows.append(rtl_line(
+                f"{volume_text} | {fa_number(subscription.remaining_days)} روز باقی‌مونده"
+            ))
             if subscription.subscription_link:
-                line += f"\nلینک ساب: {subscription.subscription_link}"
+                rows.append(rtl_line(f"لینک ساب: {subscription.subscription_link}"))
+        line = "\n".join(rows)
         if subscription.has_pending_proof:
             line += "\n⏳ یک فیش در انتظار بررسی داری"
         queued = subscription.renewal["queued_renewal"]
@@ -192,7 +192,7 @@ async def start_renewal(update: Update, context: ContextTypes.DEFAULT_TYPE):
         when = (
             "هنوز از دوره فعلی حجم و روز داری و تا آخرش قابل استفاده‌ست."
             f"\nدوره جدید ({amounts}) خودکار از لحظه‌ای شروع میشه که حجم یا روز فعلی"
-            " (هر کدوم زودتر) تموم بشه. باقی‌مونده دوره فعلی به دوره جدید منتقل نمیشه."
+            " (هر کدوم زودتر) تموم بشه."
         )
     await query.edit_message_text(
         "🔁 تمدید سرویس\n\n"

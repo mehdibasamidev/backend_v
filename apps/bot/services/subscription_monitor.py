@@ -15,7 +15,7 @@ from django.conf import settings
 from django.db import close_old_connections, transaction
 from django.utils import timezone
 
-from apps.bot.services.formatting import service_label
+from apps.bot.services.formatting import rtl_line, service_label
 from apps.vpn.models import (
     PaymentProof,
     PaymentProofKindChoices,
@@ -129,7 +129,8 @@ def _claim_due_reminder(subscription_id):
         return {
             "chat_id": profile.telegram_user_id,
             "text": (
-                f"🔔 یادآوری {title}\n\n"
+                "🔔 یادآوری\n"
+                + rtl_line(f"سرویس: {title}") + "\n\n"
                 + "\n".join(details)
                 + "\n\nبرای تمدید، وارد «سرویس‌های من» در بات شو."
             ),
@@ -182,8 +183,9 @@ def _renewal_started_message(subscription_id, proof_id):
     title = service_label(subscription)
     volume = "حجم نامحدود" if proof.extra_gb == 0 else f"{proof.extra_gb} گیگ"
     return profile.telegram_user_id, (
-        f"✅ دوره جدید {title} فعال شد.\n"
-        f"{volume} / {proof.extra_days} روز از همین الان."
+        "✅ دوره جدید سرویست فعال شد.\n"
+        + rtl_line(f"سرویس: {title}") + "\n"
+        + f"{volume} / {proof.extra_days} روز از همین الان."
         + (f"\nلینک ساب: {subscription.subscription_link}" if subscription.subscription_link else "")
     )
 

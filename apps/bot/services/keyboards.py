@@ -31,7 +31,7 @@ def subscriptions_keyboard(subscriptions):
         if subscription.renewal["available"]:
             buttons.append([
                 InlineKeyboardButton(
-                    rtl_line(f"🔁 تمدید {service_label(subscription, subscription.number, with_client=False)}"),
+                    rtl_line(f"تمدید {service_label(subscription)}"),
                     callback_data=f"sub:renew:{subscription.id}",
                 )
             ])
