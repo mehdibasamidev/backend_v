@@ -13,6 +13,12 @@ class XuiApiException(AppException):
     default_message = "3x-ui panel error"
 
 
+class XuiClientNotFound(XuiApiException):
+    """The panel answered successfully but has no client for this email."""
+
+    default_message = "3x-ui client was not found"
+
+
 class ThreeXUiClient:
     """
     Thin wrapper around the 3x-ui (MHSanaei) panel REST API v3.5+.
@@ -120,7 +126,13 @@ class ThreeXUiClient:
 
     def get_traffic(self, email):
         payload = self._request("GET", f"/panel/api/clients/traffic/{email}")
-        return payload.get("obj") or {}
+        traffic = payload.get("obj")
+        # This is deliberately different from a timeout / 5xx: a null obj
+        # is the panel's normal successful answer for an absent client. The
+        # caller may safely mark that subscription as removed from the panel.
+        if traffic is None:
+            raise XuiClientNotFound(f"Client '{email}' was not found on the panel.")
+        return traffic
 
     def get_links(self, email):
         """List of per-location config strings (vless://, vmess://, ...)."""

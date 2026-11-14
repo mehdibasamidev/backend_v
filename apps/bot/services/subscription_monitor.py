@@ -22,8 +22,13 @@ from apps.vpn.models import (
     SubscriptionStatusChoices,
     UserVpnSubscription,
 )
-from apps.vpn.services.provisioning import sync_subscription_usage
+from apps.vpn.services.provisioning import (
+    apply_traffic_to_subscription,
+    fetch_client_traffic,
+    mark_panel_client_missing,
+)
 from apps.vpn.services.review import apply_queued_renewal
+from apps.vpn.services.xui_client import XuiClientNotFound
 
 logger = logging.getLogger("apps")
 
@@ -35,7 +40,14 @@ def _interval_seconds():
     )
 
 
-def _active_subscription_ids():
+def _workers():
+    return max(
+        1,
+        int(getattr(settings, "TELEGRAM_SUBSCRIPTION_MONITOR_WORKERS", 5)),
+    )
+
+
+def _active_subscriptions():
     close_old_connections()
     return list(
         UserVpnSubscription.objects.filter(
@@ -44,7 +56,7 @@ def _active_subscription_ids():
         )
         .exclude(xui_client_email__isnull=True)
         .exclude(xui_client_email="")
-        .values_list("id", flat=True)
+        .values_list("id", "xui_client_email")
     )
 
 
@@ -148,9 +160,13 @@ def _release_claim(subscription_id, claimed_at, fields):
     ).update(**updates)
 
 
-def _sync_and_claim(subscription_id):
+def _apply_panel_state_and_claim(subscription_id, traffic=None, *, missing=False):
+    """Apply a completed HTTP result on Django's thread-sensitive executor."""
     subscription = UserVpnSubscription.objects.get(id=subscription_id)
-    sync_subscription_usage(subscription)
+    if missing:
+        mark_panel_client_missing(subscription)
+        return None
+    apply_traffic_to_subscription(subscription, traffic)
     return _claim_due_reminder(subscription_id)
 
 
@@ -211,23 +227,53 @@ async def _apply_due_renewals(bot):
             logger.exception("Applying queued renewal %s failed; retrying next tick", proof_id)
 
 
-async def _sweep(bot):
-    for subscription_id in await sync_to_async(_active_subscription_ids)():
+async def _sweep_one(bot, subscription_id, client_email, semaphore):
+    """Fetch remotely off the bot/ORM queue, then write the result quickly."""
+    async with semaphore:
         try:
-            reminder = await sync_to_async(_sync_and_claim)(subscription_id)
-            if reminder is None:
-                continue
-            try:
-                await bot.send_message(chat_id=reminder["chat_id"], text=reminder["text"])
-            except BaseException:
-                await asyncio.shield(sync_to_async(_release_claim)(
-                    subscription_id, reminder["claimed_at"], reminder["fields"],
-                ))
-                raise
+            # `thread_sensitive=False` is crucial: all normal bot handlers
+            # use sync_to_async's single thread for Django. A 15-second panel
+            # timeout used to occupy that same thread and make /start appear
+            # frozen behind every stale service.
+            traffic = await sync_to_async(
+                fetch_client_traffic, thread_sensitive=False,
+            )(client_email)
+            reminder = await sync_to_async(_apply_panel_state_and_claim)(
+                subscription_id, traffic,
+            )
+        except XuiClientNotFound:
+            # Only an explicit null client response clears a service. A 504,
+            # timeout or bad panel response remains a retryable sync failure.
+            await sync_to_async(_apply_panel_state_and_claim)(
+                subscription_id, missing=True,
+            )
+            return
         except asyncio.CancelledError:
             raise
         except Exception:
             logger.exception("Subscription monitor failed for service %s", subscription_id)
+            return
+
+        if reminder is None:
+            return
+        try:
+            await bot.send_message(chat_id=reminder["chat_id"], text=reminder["text"])
+        except BaseException:
+            await asyncio.shield(sync_to_async(_release_claim)(
+                subscription_id, reminder["claimed_at"], reminder["fields"],
+            ))
+            raise
+
+
+async def _sweep(bot):
+    subscriptions = await sync_to_async(_active_subscriptions)()
+    semaphore = asyncio.Semaphore(_workers())
+    # All outbound panel calls run in a bounded worker pool. The event loop
+    # remains available to getUpdates and /start while the panel is slow.
+    await asyncio.gather(*(
+        _sweep_one(bot, subscription_id, client_email, semaphore)
+        for subscription_id, client_email in subscriptions
+    ))
 
 
 async def run_subscription_monitor(bot):

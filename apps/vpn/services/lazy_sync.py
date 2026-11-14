@@ -8,7 +8,9 @@ from apps.vpn.models import SubscriptionStatusChoices
 from apps.vpn.services.provisioning import (
     apply_traffic_to_subscription,
     fetch_client_traffic,
+    mark_panel_client_missing,
 )
+from apps.vpn.services.xui_client import XuiClientNotFound
 
 logger = logging.getLogger("apps")
 
@@ -67,6 +69,7 @@ def lazy_sync(subscriptions):
 
     max_workers = min(len(stale), getattr(settings, "VPN_LAZY_SYNC_WORKERS", 5))
     results = {}
+    missing_from_panel = set()
 
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
         futures = {
@@ -77,6 +80,8 @@ def lazy_sync(subscriptions):
             subscription = futures[future]
             try:
                 results[subscription.id] = future.result()
+            except XuiClientNotFound:
+                missing_from_panel.add(subscription.id)
             except Exception as exc:
                 # Never surface panel trouble to the customer - fall back to
                 # the values we already have.
@@ -88,6 +93,9 @@ def lazy_sync(subscriptions):
                 )
 
     for subscription in stale:
+        if subscription.id in missing_from_panel:
+            mark_panel_client_missing(subscription)
+            continue
         traffic = results.get(subscription.id)
         if not traffic:
             continue

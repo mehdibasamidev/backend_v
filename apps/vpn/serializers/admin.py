@@ -167,6 +167,7 @@ class AdminSubscriptionSerializer(serializers.ModelSerializer):
             "price", "used_traffic_bytes",
             "started_at", "expires_at", "last_synced_at",
             "xui_client_email", "xui_client_subid", "subscription_link",
+            "panel_client_missing_at",
             "hidden_at", "created_at",
         ]
         read_only_fields = fields

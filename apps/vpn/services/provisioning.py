@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from apps.vpn.models import SubscriptionStatusChoices, UserVpnSubscription
 from apps.vpn.services.inbounds import resolve_inbound_ids
-from apps.vpn.services.xui_client import ThreeXUiClient
+from apps.vpn.services.xui_client import ThreeXUiClient, XuiClientNotFound
 from config.utils.exceptions import AppException
 
 logger = logging.getLogger("apps")
@@ -414,6 +414,23 @@ def apply_traffic_to_subscription(subscription, traffic):
     return subscription
 
 
+def mark_panel_client_missing(subscription):
+    """Preserve a paid service when its 3x-ui client was deleted manually.
+
+    A missing client is not a normal expiry and is not a reason to delete the
+    database row: payment proofs remain evidence.  The service is instead
+    cancelled, its public subscription link is removed, and the panel email
+    is retained for the admin's audit trail.
+    """
+    subscription.status = SubscriptionStatusChoices.CANCELLED
+    subscription.subscription_link = ""
+    subscription.panel_client_missing_at = timezone.now()
+    subscription.save(update_fields=[
+        "status", "subscription_link", "panel_client_missing_at", "updated_at",
+    ])
+    return subscription
+
+
 def sync_subscription_usage(subscription):
     """
     Fetch + apply for a single subscription. Safe to call on any
@@ -422,5 +439,8 @@ def sync_subscription_usage(subscription):
     if not subscription.xui_client_email:
         return subscription
 
-    traffic = fetch_client_traffic(subscription.xui_client_email)
+    try:
+        traffic = fetch_client_traffic(subscription.xui_client_email)
+    except XuiClientNotFound:
+        return mark_panel_client_missing(subscription)
     return apply_traffic_to_subscription(subscription, traffic)

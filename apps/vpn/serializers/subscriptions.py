@@ -60,6 +60,7 @@ class UserVpnSubscriptionSerializer(serializers.ModelSerializer):
             "used_gb",
             "can_be_hidden",
             "subscription_link", "started_at", "expires_at",
+            "panel_client_missing_at",
             "price", "payment_status", "has_pending_payment",
             "latest_proof", "renewal", "created_at",
         ]

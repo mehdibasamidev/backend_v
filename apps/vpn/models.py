@@ -252,6 +252,10 @@ class UserVpnSubscription(models.Model):
     xui_client_subid = models.CharField(max_length=64, null=True, blank=True)
     xui_client_email = models.CharField(max_length=150, null=True, blank=True, unique=True)
     subscription_link = models.URLField(max_length=500, blank=True)
+    # A missing panel client must never erase the purchase/proof evidence.
+    # Keep its panel identifier for an admin to investigate, but clear the
+    # unusable public link and mark exactly when the absence was confirmed.
+    panel_client_missing_at = models.DateTimeField(null=True, blank=True)
 
     # Soft delete. The customer can clear finished services out of their
     # list, but the row (and its payment proofs) stays for the admin -

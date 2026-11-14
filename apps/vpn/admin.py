@@ -112,7 +112,7 @@ class UserVpnSubscriptionAdmin(admin.ModelAdmin):
     search_fields = ("user__email", "label", "xui_client_email")
     readonly_fields = (
         "xui_client_uuid", "xui_client_subid", "xui_client_email", "xui_inbound_ids",
-        "subscription_link", "used_traffic_bytes", "last_synced_at",
+        "subscription_link", "panel_client_missing_at", "used_traffic_bytes", "last_synced_at",
         "started_at", "expires_at",
     )
     inlines = [PaymentProofInline]

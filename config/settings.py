@@ -260,6 +260,11 @@ TELEGRAM_PROXY_URL = config("TELEGRAM_PROXY_URL", default="")
 TELEGRAM_SUBSCRIPTION_MONITOR_INTERVAL_SECONDS = config(
     "TELEGRAM_SUBSCRIPTION_MONITOR_INTERVAL_SECONDS", default=900, cast=int,
 )
+# Parallel panel HTTP calls used by the monitor. It is deliberately small:
+# enough to keep the bot responsive during timeouts, without flooding 3x-ui.
+TELEGRAM_SUBSCRIPTION_MONITOR_WORKERS = config(
+    "TELEGRAM_SUBSCRIPTION_MONITOR_WORKERS", default=5, cast=int,
+)
 
 # The bot's @username is no longer a setting: see TelegramBotSettings (admin
 # panel "Settings" tab), which the bot container also fills in when it
