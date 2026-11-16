@@ -70,7 +70,10 @@ def _claim_due_reminder(subscription_id):
     now = timezone.now()
     with transaction.atomic():
         subscription = (
-            UserVpnSubscription.objects.select_for_update()
+            # ``telegram_profile`` is optional, so select_related creates a
+            # LEFT OUTER JOIN. PostgreSQL cannot lock that nullable join side;
+            # reserve only the subscription row that carries reminder state.
+            UserVpnSubscription.objects.select_for_update(of=("self",))
             .select_related("plan", "user__telegram_profile")
             .filter(id=subscription_id, status=SubscriptionStatusChoices.ACTIVE)
             .first()
