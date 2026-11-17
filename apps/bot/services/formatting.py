@@ -1,3 +1,6 @@
+from decimal import Decimal
+
+
 def fa_price(value) -> str:
     formatted = f"{value:,.0f}"
     return formatted.translate(
@@ -31,6 +34,11 @@ def fa_number(value):
     """20.0 -> "۲۰", 1.25 -> "۱٫۲۵": Persian digits, no pointless ".0"."""
     text = f"{value:.2f}".rstrip("0").rstrip(".") if isinstance(value, float) else str(value)
     return text.translate(_FA_DIGITS)
+
+
+def fa_decimal_amount(value):
+    digits = f"{Decimal(value):,.2f}".rstrip("0").rstrip(".")
+    return fa_number(digits).replace(",", "٬")
 
 
 def client_name(email):

@@ -1,6 +1,9 @@
 import asyncio
+import logging
 
 from django.conf import settings
+from telegram import BotCommand, BotCommandScopeAllPrivateChats
+from telegram.error import TelegramError
 from telegram.ext import (
     Application,
     ApplicationBuilder,
@@ -19,12 +22,27 @@ from apps.bot.handlers import (
     admin_review,
     referral,
     telegram_auth,
+    wallet,
 )
 from apps.bot.services.bot_settings import arecord_running_bot
+from apps.bot.services.keyboards import MENU_ROWS, REFERRAL_BUTTON_PATTERN
 
 
 _application: Application | None = None
 _init_lock = asyncio.Lock()
+logger = logging.getLogger("apps")
+
+
+async def register_menu_commands(bot):
+    commands = [
+        BotCommand(command, label)
+        for row in MENU_ROWS
+        for command, label, _, _ in row
+    ]
+    try:
+        await bot.set_my_commands(commands, scope=BotCommandScopeAllPrivateChats())
+    except TelegramError as exc:
+        logger.warning("Could not update Telegram menu commands (%s)", type(exc).__name__)
 
 
 def build_application(*, for_polling: bool = False) -> Application:
@@ -99,26 +117,21 @@ def build_application(*, for_polling: bool = False) -> Application:
         )
     )
 
-    application.add_handler(
-        CommandHandler(
-            "mycode",
-            referral.my_referral_code,
-        )
-    )
-
-    application.add_handler(
-        CommandHandler(
-            "plans",
-            plans.show_plan_list,
-        )
-    )
-
-    application.add_handler(
-        CommandHandler(
-            "mysubs",
-            subscriptions.list_subscriptions,
-        )
-    )
+    menu_handlers = {
+        "plans": plans.show_plan_list,
+        "renew": subscriptions.list_renewable_subscriptions,
+        "mycode": referral.my_referral_code,
+        "mysubs": subscriptions.list_subscriptions,
+        "wallet": wallet.show_wallet,
+    }
+    for row in MENU_ROWS:
+        for command, label, _, _ in row:
+            handler = menu_handlers[command]
+            application.add_handler(CommandHandler(command, handler, filters=filters.ChatType.PRIVATE))
+            # Reply-keyboard taps arrive as text. Match them before the
+            # receipt handler so they can't be mistaken for tracking codes.
+            button_filter = filters.Regex(REFERRAL_BUTTON_PATTERN) if command == "mycode" else filters.Text([label])
+            application.add_handler(MessageHandler(filters.ChatType.PRIVATE & button_filter, handler))
 
     # ------------------------------------------------------------------
     # Main menu
@@ -204,6 +217,12 @@ def build_application(*, for_polling: bool = False) -> Application:
             subscriptions.start_renewal,
             pattern=r"^sub:renew:",
         )
+    )
+    application.add_handler(
+        CallbackQueryHandler(subscriptions.list_renewable_subscriptions, pattern=r"^menu:renew$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(wallet.show_wallet, pattern=r"^menu:wallet$")
     )
 
     # ------------------------------------------------------------------
@@ -298,6 +317,7 @@ async def get_application() -> Application:
             # Same as the polling command: initialize() ran getMe, so record
             # which bot this token is for the deep links. Never raises.
             await arecord_running_bot(_application.bot)
+            await register_menu_commands(_application.bot)
 
     return _application
 

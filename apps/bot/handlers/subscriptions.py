@@ -13,7 +13,7 @@ from apps.bot.services.formatting import (
     service_label,
     service_name,
 )
-from apps.bot.services.keyboards import main_menu_keyboard, subscriptions_keyboard
+from apps.bot.services.keyboards import current_main_keyboard, subscriptions_keyboard
 from apps.bot.services.registration import get_or_create_telegram_user
 from apps.vpn.models import PaymentProof, UserVpnSubscription
 from apps.vpn.services.checkout import (
@@ -40,7 +40,11 @@ def _amounts(days, volume_gb):
     return f"{volume} / {days} روز"
 
 
-async def list_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def list_renewable_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await list_subscriptions(update, context, renewal_only=True)
+
+
+async def list_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE, *, renewal_only=False):
     def _get():
         profile = get_or_create_telegram_user(update.effective_user)
         if profile is None:
@@ -48,7 +52,7 @@ async def list_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
         subscriptions = list(
             UserVpnSubscription.objects
-            .filter(user=profile.user)
+            .filter(user=profile.user, hidden_at__isnull=True)
             .select_related("plan")
             .annotate(
                 has_pending_proof=Exists(
@@ -83,14 +87,28 @@ async def list_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await update.message.reply_text(text)
         return
 
+    if renewal_only:
+        eligible = [subscription for subscription in subs if subscription.renewal["available"]]
+        text = (
+            "♻️ سرویسی که می‌خوای تمدید کنی انتخاب کن:"
+            if eligible else "فعلاً سرویس قابل تمدید نداری."
+        )
+        keyboard = subscriptions_keyboard(eligible, show_refresh=False) if eligible else await current_main_keyboard()
+        if update.callback_query:
+            await update.callback_query.edit_message_text(text, reply_markup=keyboard)
+        else:
+            await update.message.reply_text(text, reply_markup=keyboard)
+        return
+
     if not subs:
         text = "هنوز هیچ سرویسی نداری."
+        keyboard = await current_main_keyboard()
         if update.callback_query:
             await update.callback_query.edit_message_text(
-                text, reply_markup=main_menu_keyboard(),
+                text, reply_markup=keyboard,
             )
         else:
-            await update.message.reply_text(text, reply_markup=main_menu_keyboard())
+            await update.message.reply_text(text, reply_markup=keyboard)
         return
 
     lines = []
@@ -165,7 +183,7 @@ async def start_renewal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except RenewalUnavailable as exc:
         await query.edit_message_text(
             f"⚠️ {RENEWAL_UNAVAILABLE_FA.get(exc.reason, exc.message)}",
-            reply_markup=main_menu_keyboard(),
+            reply_markup=await current_main_keyboard(),
         )
         return
     except Exception:
@@ -173,7 +191,7 @@ async def start_renewal(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # carry someone else's or an invalid id - never show a traceback.
         await query.edit_message_text(
             "⚠️ سرویس پیدا نشد یا فعلاً قابل تمدید نیست.",
-            reply_markup=main_menu_keyboard(),
+            reply_markup=await current_main_keyboard(),
         )
         return
 

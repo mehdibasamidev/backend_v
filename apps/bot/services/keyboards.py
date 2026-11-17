@@ -1,10 +1,14 @@
+import re
+
+from asgiref.sync import sync_to_async
 from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    # KeyboardButton,
-    # ReplyKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
 )
-from apps.bot.services.formatting import fa_price, rtl_line, service_label
+from apps.bot.services.formatting import fa_decimal_amount, fa_price, rtl_line, service_label
+from apps.referral.models import ReferralSettings, RewardKind
 from apps.vpn.models import VpnPlan
 # Step sizes for the custom-plan +/- steppers. GB uses the step configured in
 # VpnPricingConfig (gb_step); days/users don't have a configurable step yet,
@@ -14,16 +18,65 @@ DAY_STEP = 5
 USER_STEP = 1
 
 
-def main_menu_keyboard():
+REFERRAL_BUTTON = "👥 معرفی به دوستان"
+# Telegram sends back the label shown on an existing keyboard, even after
+# the admin changes or disables the offer.
+REFERRAL_BUTTON_PATTERN = rf"\A{re.escape(REFERRAL_BUTTON)}(?: \(دریافت [۰-۹٬٫]+(?: تومان|٪ تخفیف)\))?\Z"
+
+
+MENU_ROWS = (
+    (
+        ("plans", "🚀 خرید سرویس جدید", "menu:plans", "success"),
+        ("renew", "♻️ تمدید سرویس", "menu:renew", "success"),
+    ),
+    (("mycode", REFERRAL_BUTTON, "menu:referral", "primary"),),
+    (("mysubs", "📲 سرویس‌های من", "menu:subscriptions", None),),
+    (("wallet", "💰 اعتبار من", "menu:wallet", None),),
+)
+
+
+def referral_reward_offer():
+    policy = ReferralSettings.get_solo()
+    if not policy.personal_codes_enabled or policy.reward_value <= 0:
+        return ""
+    if policy.reward_kind == RewardKind.WALLET:
+        return f"{fa_decimal_amount(policy.reward_value)} تومان"
+    if policy.reward_kind == RewardKind.DISCOUNT:
+        return f"{fa_decimal_amount(policy.reward_value)}٪ تخفیف"
+    return ""
+
+
+async def current_main_keyboard(*, persistent=False):
+    offer = await sync_to_async(referral_reward_offer)()
+    make_keyboard = main_reply_keyboard if persistent else main_menu_keyboard
+    return make_keyboard(offer)
+
+
+def _menu_label(label, offer):
+    return f"{label} (دریافت {offer})" if label == REFERRAL_BUTTON and offer else label
+
+
+def main_menu_keyboard(offer=""):
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🛒 خرید سرویس", callback_data="menu:plans")],
-        [InlineKeyboardButton("🧩 پلن سفارشی", callback_data="custom:start")],
-        [InlineKeyboardButton("📦 سرویس‌های من", callback_data="menu:subscriptions")],
-        [InlineKeyboardButton("🎁 کد دعوت من", callback_data="menu:referral")],
+        [InlineKeyboardButton(_menu_label(label, offer), callback_data=callback, api_kwargs={"style": style} if style else None)
+         for _, label, callback, style in row]
+        for row in MENU_ROWS
     ])
 
 
-def subscriptions_keyboard(subscriptions):
+def main_reply_keyboard(offer=""):
+    return ReplyKeyboardMarkup(
+        [
+            [KeyboardButton(_menu_label(label, offer), api_kwargs={"style": style} if style else None)
+             for _, label, _, style in row]
+            for row in MENU_ROWS
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+    )
+
+
+def subscriptions_keyboard(subscriptions, *, show_refresh=True):
     """Per-service actions; callback payloads stay below Telegram's 64-byte limit."""
     buttons = []
     for subscription in subscriptions:
@@ -35,26 +88,10 @@ def subscriptions_keyboard(subscriptions):
                     callback_data=f"sub:renew:{subscription.id}",
                 )
             ])
-    buttons.append([InlineKeyboardButton("🔄 بروزرسانی مصرف", callback_data="sub:refresh")])
+    if show_refresh:
+        buttons.append([InlineKeyboardButton("🔄 بروزرسانی مصرف", callback_data="sub:refresh")])
     buttons.append([InlineKeyboardButton("⬅️ برگشت", callback_data="menu:main")])
     return InlineKeyboardMarkup(buttons)
-
-
-# def main_reply_keyboard():
-#     return ReplyKeyboardMarkup(
-#         [
-#             [
-#                 KeyboardButton("🛒 خرید سرویس"),
-#                 KeyboardButton("🧩 پلن سفارشی"),
-#             ],
-#             [
-#                 KeyboardButton("📦 سرویس‌های من"),
-#                 KeyboardButton("🎁 کد دعوت من"),
-#             ],
-#         ],
-#         resize_keyboard=True,
-#         is_persistent=True,
-#     )
 
 
 def plans_list_keyboard():
@@ -62,6 +99,7 @@ def plans_list_keyboard():
         [InlineKeyboardButton(f"{plan.name} - {fa_price(plan.price)}", callback_data=f"plan:view:{plan.id}")]
         for plan in VpnPlan.objects.filter(is_active=True)
     ]
+    buttons.append([InlineKeyboardButton("🧩 پلن سفارشی", callback_data="custom:start")])
     buttons.append([InlineKeyboardButton("⬅️ برگشت", callback_data="menu:main")])
     return InlineKeyboardMarkup(buttons)
 

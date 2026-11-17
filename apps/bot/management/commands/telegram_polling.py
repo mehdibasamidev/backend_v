@@ -5,7 +5,7 @@ import signal
 
 from django.core.management.base import BaseCommand
 
-from apps.bot.services.bot_app import build_application
+from apps.bot.services.bot_app import build_application, register_menu_commands
 from apps.bot.services.bot_settings import arecord_running_bot_until_done
 from apps.bot.services.proof_notifier import run_proof_notifier
 from apps.bot.services.subscription_monitor import run_subscription_monitor
@@ -118,6 +118,7 @@ class Command(BaseCommand):
             username_recorder = asyncio.create_task(
                 arecord_running_bot_until_done(application.bot)
             )
+            menu_registration = asyncio.create_task(register_menu_commands(application.bot))
 
             # docker-compose starts this command in exec form, so Python
             # is PID 1, and the kernel drops a SIGTERM that PID 1 has no
@@ -142,11 +143,14 @@ class Command(BaseCommand):
                 await stop.wait()
 
             finally:
+                menu_registration.cancel()
                 username_recorder.cancel()
                 notifier.cancel()
                 subscription_monitor.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await username_recorder
+                with contextlib.suppress(asyncio.CancelledError):
+                    await menu_registration
                 with contextlib.suppress(asyncio.CancelledError):
                     await notifier
                 with contextlib.suppress(asyncio.CancelledError):

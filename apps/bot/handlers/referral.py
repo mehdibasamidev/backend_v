@@ -2,7 +2,7 @@ from asgiref.sync import sync_to_async
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 from urllib.parse import urlencode
-from apps.bot.services.keyboards import main_menu_keyboard
+from apps.bot.services.keyboards import current_main_keyboard, referral_reward_offer
 from apps.bot.services.registration import (
     get_or_create_telegram_user,
     needs_referral_code,
@@ -47,7 +47,7 @@ async def try_handle_referral_code(
 
     await update.message.reply_text(
         "✅ خوش اومدی! حسابت ساخته شد.",
-        reply_markup=main_menu_keyboard(),
+        reply_markup=await current_main_keyboard(persistent=update.effective_chat.type == "private"),
     )
     return True
 
@@ -110,6 +110,12 @@ async def my_referral_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"تا حالا {code.used_count} نفر باهاش ثبت‌نام کردن.\n"
         f"باقی‌مانده: {remaining}"
     )
+    offer = await sync_to_async(referral_reward_offer)()
+    if offer:
+        text += (
+            "\n\nاگر دوستت با کدت ثبت‌نام کند، بعد از تأیید اولین خرید پرداختی‌اش در اپ، "
+            f"{offer} پاداش می‌گیری."
+        )
 
     if update.callback_query:
         await update.callback_query.edit_message_text(
