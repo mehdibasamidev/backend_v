@@ -372,38 +372,40 @@ needed.
 
 ## 9. Deploy later updates
 
-Back up before each update, then rebuild:
+From the server checkout, run:
 
 ~~~bash
 cd /srv/vpn-backend
-docker compose exec -T db pg_dump -U vpn_backend vpn_backend | gzip > "backup-$(date +%F-%H%M%S).sql.gz"
-git fetch origin
-git switch main
-git pull --ff-only origin main
-docker compose up -d --build
-docker compose logs --tail=100 django
+sh deploy.sh
 ~~~
 
-Once, for the update that adds vpn migrations 0004-0006 (inbound groups and
-the Telegram receipt outbox), replace the plain `docker compose up -d --build`
-above with this order. The old bot would otherwise keep posting receipts
-without marking them announced, and the new bot would post them a second time:
+Pull once to install the script on an existing server. The script pulls
+`main` using fast-forward only, rebuilds Django and the bot, and waits for
+them to start. Django's startup script runs migrations before opening port
+8000. Compose waits for Django to become healthy before starting the bot.
+Deploy both services together to use this startup order.
+
+To back up the PostgreSQL database separately, generate an age key on a
+trusted machine with `age-keygen -o vpn-backup-key.txt`. Keep the private key
+there. Set `DATABASE_BACKUP_AGE_RECIPIENT` in the server's `.env` to the
+public `age1…` key and `TELEGRAM_BACKUP_CHAT_ID` to your positive Telegram
+user ID. Open a private chat with the bot and send `/start` once. After
+applying the environment through `sh deploy.sh`, run:
 
 ~~~bash
-docker compose stop spacedigital_vpn_telegram_bot
-docker compose up -d --build spacedigital_vpn_django
-docker compose logs -f spacedigital_vpn_django   # wait for "Starting Gunicorn": migrations are done
-docker compose up -d --build spacedigital_vpn_telegram_bot
+sh backup-db.sh
 ~~~
 
-The same order applies to any release whose migrations the bot reads, such as
-bot 0003 and vpn 0007-0008 (Telegram login/linking and PaymentProof.source):
-the bot container never runs `migrate`, so new bot code started on the old
-schema fails on every receipt and every login link until the web container
-has migrated. For bot 0005-0006 (the bot username setting) the bot keeps
-running and retries recording its username every 10 seconds until the web
-container has migrated; only if it gives up after 10 minutes does it need a
-restart.
+This sends the encrypted `.dump.age` file to that private chat on demand.
+Run `sh backup-db.sh --info` to verify which database Django is connected to before backing it up.
+Deploying does not send a backup. The dump covers PostgreSQL only. The
+standard Telegram Bot API upload limit is 50 MB. To decrypt a downloaded
+backup on your trusted machine:
+
+~~~bash
+age --decrypt -i vpn-backup-key.txt -o vpn-db.dump vpn-db-TIMESTAMP.dump.age
+pg_restore --list vpn-db.dump
+~~~
 
 If HAProxy changed:
 

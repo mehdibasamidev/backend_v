@@ -243,6 +243,8 @@ TELEGRAM_BOT_TOKEN = config("TELEGRAM_BOT_TOKEN", default="")
 TELEGRAM_WEBHOOK_SECRET = config("TELEGRAM_WEBHOOK_SECRET", default="")        # random 32+ chars
 TELEGRAM_BASE_WEBHOOK_URL = config("TELEGRAM_BASE_WEBHOOK_URL", default="")    # https://api.yourdomain.com
 TELEGRAM_ADMIN_GROUP_CHAT_ID = config("TELEGRAM_ADMIN_GROUP_CHAT_ID", default="")
+TELEGRAM_BACKUP_CHAT_ID = config("TELEGRAM_BACKUP_CHAT_ID", default="")
+DATABASE_BACKUP_AGE_RECIPIENT = config("DATABASE_BACKUP_AGE_RECIPIENT", default="")
 
 # Telegram user ids allowed to approve/reject receipts, comma separated.
 # These people get their own copy of every receipt in a private chat with

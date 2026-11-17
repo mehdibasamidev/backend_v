@@ -74,6 +74,13 @@ services:
       - spacedigital_vpn_minio
     ports:
       - "127.0.0.1:8000:8000" # Private to HAProxy
+    healthcheck:
+      # app.sh binds Gunicorn only after migrate and collectstatic succeed.
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8000), timeout=2).close()"]
+      interval: 5s
+      timeout: 3s
+      start_period: 15s
+      retries: 60
     networks:
       - spacedigital_vpn_net
 
@@ -109,10 +116,14 @@ services:
       - manage.py
       - telegram_polling
     depends_on:
-      - spacedigital_vpn_db
-      - spacedigital_vpn_redis
-      - spacedigital_vpn_minio
-      - spacedigital_vpn_django
+      spacedigital_vpn_db:
+        condition: service_started
+      spacedigital_vpn_redis:
+        condition: service_started
+      spacedigital_vpn_minio:
+        condition: service_started
+      spacedigital_vpn_django:
+        condition: service_healthy
     networks:
       - spacedigital_vpn_net
 

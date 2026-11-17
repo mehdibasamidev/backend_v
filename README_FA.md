@@ -396,37 +396,41 @@ crontab -e
 
 ## مرحلهٔ 9: انتشار نسخه‌های بعدی
 
-قبل از update از دیتابیس backup بگیرید و سپس image را build مجدد کنید:
+روی سرور اجرا کنید:
 
 ~~~bash
 cd /srv/vpn-backend
-docker compose exec -T db pg_dump -U vpn_backend vpn_backend | gzip > "backup-$(date +%F-%H%M%S).sql.gz"
-git fetch origin
-git switch main
-git pull --ff-only origin main
-docker compose up -d --build
-docker compose logs --tail=100 django
+sh deploy.sh
 ~~~
 
-فقط یک بار، برای نسخه‌ای که migrationهای 0004 تا 0006 اپ vpn را اضافه می‌کند
-(گروه‌های اینباند و صف ارسال فیش‌ها به تلگرام)، به‌جای `docker compose up -d --build`
-بالا این ترتیب را اجرا کنید. در غیر این صورت بات قدیمی فیش‌ها را بدون ثبتِ
-«ارسال‌شده» به ادمین‌ها می‌فرستد و بات جدید همان فیش‌ها را دوباره ارسال می‌کند:
+روی سرور موجود، یک بار pull بزنید تا اسکریپت اضافه شود. اسکریپت خودش
+`main` را به‌صورت fast-forward می‌گیرد و Django و بات را build و اجرا می‌کند.
+Django قبل از بازکردن پورت ۸۰۰۰ migrationها را اجرا می‌کند و Compose بات
+را بعد از آماده‌شدن Django راه می‌اندازد. برای استفاده از این ترتیب، هر
+دو سرویس را با هم منتشر کنید.
+
+برای بکاپ جداگانهٔ PostgreSQL، روی دستگاه مطمئن با
+`age-keygen -o vpn-backup-key.txt` کلید بسازید و فایل کلید خصوصی را همان‌جا
+نگه دارید. کلید عمومی `age1…` را در `DATABASE_BACKUP_AGE_RECIPIENT` و شناسهٔ
+عددی مثبت کاربر تلگرام خودتان را در `TELEGRAM_BACKUP_CHAT_ID` در فایل
+`.env` سرور بگذارید. یک بار در چت خصوصی بات `/start` بزنید. بعد از اعمال
+متغیرهای محیطی با `sh deploy.sh` اجرا کنید:
 
 ~~~bash
-docker compose stop spacedigital_vpn_telegram_bot
-docker compose up -d --build spacedigital_vpn_django
-docker compose logs -f spacedigital_vpn_django   # منتظر "Starting Gunicorn" بمانید: migrationها تمام شده‌اند
-docker compose up -d --build spacedigital_vpn_telegram_bot
+sh backup-db.sh
 ~~~
 
-همین ترتیب برای هر نسخه‌ای که migrationهایش را ربات هم می‌خواند لازم است، مثل
-bot 0003 و vpn 0007 تا 0008 (ورود/اتصال با تلگرام و PaymentProof.source):
-کانتینر ربات هیچ‌وقت `migrate` اجرا نمی‌کند، پس کد جدید ربات روی schema قدیمی
-با هر فیش و هر لینک ورود خطا می‌دهد تا وقتی کانتینر وب migrate کند. برای bot
-0005 تا 0006 (تنظیم نام کاربری ربات) ربات به کارش ادامه می‌دهد و تا وقتی
-کانتینر وب migrate کند، هر 10 ثانیه دوباره برای ثبت نام کاربری‌اش تلاش می‌کند؛
-فقط اگر بعد از 10 دقیقه تلاش را کنار بگذارد باید restart شود.
+این دستور فایل رمزنگاری‌شدهٔ `.dump.age` را به چت خصوصی تعیین‌شده می‌فرستد.
+برای دیدن دیتابیسی که Django واقعاً به آن وصل است، قبل از بکاپ
+`sh backup-db.sh --info` را اجرا کنید.
+ارسال بکاپ فقط با اجرای دستور بکاپ انجام می‌شود. فایل فقط PostgreSQL را
+پوشش می‌دهد و سقف ارسال Bot API تلگرام ۵۰ مگابایت است. برای بازکردن فایل
+روی دستگاه مطمئن:
+
+~~~bash
+age --decrypt -i vpn-backup-key.txt -o vpn-db.dump vpn-db-TIMESTAMP.dump.age
+pg_restore --list vpn-db.dump
+~~~
 
 اگر haproxy.conf تغییر کرد:
 
