@@ -3,7 +3,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from apps.bot.handlers.referral import try_handle_referral_code
 from apps.bot.handlers.telegram_auth import try_handle_auth_start
-from apps.bot.services.keyboards import current_main_keyboard
+from apps.bot.services.keyboards import main_menu_keyboard, main_reply_keyboard
 from apps.bot.services.registration import (
     begin_referral_prompt,
     get_or_create_telegram_user,
@@ -51,14 +51,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         "سلام 👋\nبرای خرید، تمدید یا مشاهدهٔ سرویس‌هات از منوی پایین استفاده کن.",
-        reply_markup=await current_main_keyboard(persistent=update.effective_chat.type == "private"),
+        reply_markup=main_reply_keyboard() if update.effective_chat.type == "private" else main_menu_keyboard(),
     )
 
 
 async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text("منوی اصلی:", reply_markup=await current_main_keyboard())
+    await query.edit_message_text("منوی اصلی:", reply_markup=main_menu_keyboard())
 
 
 async def noop(update: Update, context: ContextTypes.DEFAULT_TYPE):
