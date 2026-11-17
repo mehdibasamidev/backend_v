@@ -1,6 +1,9 @@
+from decimal import Decimal
+
+from django.core.exceptions import ValidationError
 from rest_framework import serializers
 
-from apps.referral.models import Referral, ReferralCode, ReferralSettings
+from apps.referral.models import Referral, ReferralCode, ReferralSettings, RewardKind, validate_reward_policy
 
 
 class ReferralSettingsSerializer(serializers.ModelSerializer):
@@ -10,9 +13,20 @@ class ReferralSettingsSerializer(serializers.ModelSerializer):
             "required_for_signup",
             "personal_codes_enabled",
             "default_personal_max_uses",
+            "reward_kind",
+            "reward_value",
             "updated_at",
         ]
         read_only_fields = ["updated_at"]
+
+    def validate(self, attrs):
+        kind = attrs.get("reward_kind", getattr(self.instance, "reward_kind", RewardKind.DISABLED))
+        value = attrs.get("reward_value", getattr(self.instance, "reward_value", Decimal("0")))
+        try:
+            validate_reward_policy(kind, value)
+        except ValidationError as exc:
+            raise serializers.ValidationError(exc.message_dict) from exc
+        return attrs
 
 
 class PublicReferralSettingsSerializer(serializers.ModelSerializer):

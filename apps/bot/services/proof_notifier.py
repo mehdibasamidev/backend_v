@@ -105,7 +105,10 @@ def _buyer_label(user, profile):
 
 
 def _amount_label(amount):
-    return "—" if amount is None else f"{int(amount):,} تومان"
+    if amount is None:
+        return "—"
+    formatted = f"{amount:,.2f}".rstrip("0").rstrip(".")
+    return f"{formatted} تومان"
 
 
 def _plan_label(subscription):
@@ -137,7 +140,7 @@ def _load_announcement(proof_id):
     """Everything the send needs, read on the sync side. None when there is nothing to announce."""
     proof = (
         PaymentProof.objects
-        .select_related("subscription__plan", "subscription__user__telegram_profile")
+        .select_related("subscription__plan", "subscription__user__telegram_profile", "reward_use")
         .filter(id=proof_id)
         .first()
     )
@@ -157,9 +160,15 @@ def _load_announcement(proof_id):
         # connected their app account to Telegram has a profile too.
         "منبع: 🤖 ربات تلگرام" if proof.source == PaymentProofSourceChoices.BOT else "منبع: 📱 اپلیکیشن",
         f"کاربر: {_buyer_label(buyer, profile)}",
-        f"مبلغ: {_amount_label(proof.amount)}",
+        f"مبلغ انتقال بانکی: {_amount_label(proof.amount)}",
         f"پلن: {_plan_label(subscription)}",
     ]
+    reward = getattr(proof, "reward_use", None)
+    if reward:
+        if reward.wallet_amount:
+            fixed.append(f"اعتبار کیف پول: {_amount_label(reward.wallet_amount)}")
+        if reward.discount_amount:
+            fixed.append(f"تخفیف معرفی: {_amount_label(reward.discount_amount)}")
     if is_renewal:
         extras = []
         if proof.extra_days:

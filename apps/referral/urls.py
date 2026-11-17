@@ -9,6 +9,7 @@ from apps.referral.views.referral import (
     MyReferralCodeView,
     ReferralSettingsPublicView,
     ValidateReferralCodeView,
+    WalletView,
 )
 
 urlpatterns = [
@@ -17,6 +18,7 @@ urlpatterns = [
     path("referral/validate/", ValidateReferralCodeView.as_view(), name="referral-validate"),
 
     path("referral/me/", MyReferralCodeView.as_view(), name="referral-me"),
+    path("referral/wallet/", WalletView.as_view(), name="referral-wallet"),
 
     path("referral/admin/settings/", AdminReferralSettingsView.as_view(), name="referral-admin-settings"),
     path("referral/admin/codes/", AdminReferralCodeListCreateView.as_view(), name="referral-admin-codes"),

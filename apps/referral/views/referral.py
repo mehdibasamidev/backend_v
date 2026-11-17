@@ -22,6 +22,7 @@ from apps.referral.services.redemption import (
     get_or_create_personal_code,
     resolve_code,
 )
+from apps.referral.services.rewards import wallet_summary
 from config.utils.exceptions import AppException
 from config.utils.pagination import StandardResultsSetPagination
 from config.utils.response import (
@@ -89,6 +90,14 @@ class MyReferralCodeView(APIView):
             },
             message="Invite code retrieved successfully.",
         )
+
+
+class WalletView(APIView):
+    permission_classes = [IsAuthenticated]
+    renderer_classes = [JSONRenderer]
+
+    def get(self, request):
+        return SuccessResponse(data=wallet_summary(request.user))
 
 
 # ------------------------------------------------------------------ admin

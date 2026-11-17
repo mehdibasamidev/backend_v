@@ -1,9 +1,25 @@
 import uuid
+from decimal import Decimal
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.crypto import get_random_string
+
+
+class RewardKind(models.TextChoices):
+    DISABLED = "disabled", "Disabled"
+    WALLET = "wallet", "Fixed wallet credit (toman)"
+    DISCOUNT = "discount", "One-time discount (%)"
+
+
+def validate_reward_policy(kind, value):
+    if kind != RewardKind.DISABLED and value <= 0:
+        raise ValidationError({"reward_value": "Enter a positive reward value."})
+    if kind == RewardKind.DISCOUNT and value > 100:
+        raise ValidationError({"reward_value": "The discount cannot exceed 100%."})
 
 
 class ReferralSettings(models.Model):
@@ -32,6 +48,13 @@ class ReferralSettings(models.Model):
         default=0,
         help_text="How many signups one user's personal code allows. 0 = unlimited.",
     )
+    reward_kind = models.CharField(
+        max_length=10, choices=RewardKind.choices, default=RewardKind.DISABLED,
+    )
+    reward_value = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal("0"),
+        help_text="Toman for wallet credit or percentage for a discount. Ignored when disabled.",
+    )
 
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -42,6 +65,11 @@ class ReferralSettings(models.Model):
     def __str__(self):
         state = "required" if self.required_for_signup else "optional"
         return f"Referral settings ({state})"
+
+    def clean(self):
+        super().clean()
+        if self.reward_value is not None:
+            validate_reward_policy(self.reward_kind, self.reward_value)
 
     @classmethod
     def get_solo(cls):
@@ -162,9 +190,7 @@ class Referral(models.Model):
         related_name="referral_source",
     )
 
-    # Reward bookkeeping. Present from the start so adding the reward logic
-    # later is code only, not a migration over a table that by then holds
-    # real signups.
+    # Kept for the existing referral API and historic reward records.
     is_rewarded = models.BooleanField(default=False)
     rewarded_at = models.DateTimeField(null=True, blank=True)
     reward_note = models.CharField(max_length=200, blank=True)
@@ -176,3 +202,50 @@ class Referral(models.Model):
 
     def __str__(self):
         return f"{self.referred_user_id} via {self.code.code}"
+
+
+class ReferralReward(models.Model):
+    """An earned credit or coupon, with the policy frozen at approval."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    referral = models.OneToOneField(Referral, on_delete=models.PROTECT, related_name="reward")
+    purchase = models.OneToOneField("vpn.PaymentProof", on_delete=models.PROTECT, related_name="referral_reward")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="earned_referral_rewards")
+    kind = models.CharField(max_length=10, choices=RewardKind.choices)
+    value = models.DecimalField(max_digits=12, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.CheckConstraint(
+                check=Q(kind=RewardKind.WALLET, value__gt=0)
+                | Q(kind=RewardKind.DISCOUNT, value__gt=0, value__lte=100),
+                name="referral_reward_valid_value",
+            ),
+        ]
+
+
+class CheckoutRewardUse(models.Model):
+    """A reservation that becomes a spend on approval. Rejection releases it."""
+
+    proof = models.OneToOneField("vpn.PaymentProof", on_delete=models.PROTECT, related_name="reward_use")
+    request_id = models.UUIDField(unique=True, editable=False)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="checkout_reward_uses")
+    wallet_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0"))
+    discount = models.ForeignKey(ReferralReward, on_delete=models.PROTECT, null=True, blank=True, related_name="uses")
+    discount_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0"))
+    released_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                check=Q(wallet_amount__gt=0, discount__isnull=True, discount_amount=0)
+                | Q(wallet_amount=0, discount__isnull=False, discount_amount__gt=0),
+                name="referral_checkout_one_reward",
+            ),
+            models.UniqueConstraint(
+                fields=["discount"], condition=Q(discount__isnull=False, released_at__isnull=True),
+                name="referral_checkout_unique_discount",
+            ),
+        ]

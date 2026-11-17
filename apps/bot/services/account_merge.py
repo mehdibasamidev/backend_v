@@ -6,8 +6,7 @@ through the bot.
 What moves to the target:
   - UserVpnSubscription.user - payment proofs hang off the subscription,
     so they follow without being touched;
-  - the referral data: codes the source owns, redemptions it earned as
-    referrer, and the redemption that brought it in (see below);
+  - the referral data: codes, redemptions, and earned and spent rewards;
   - the TelegramProfile, re-pointed, so the bot keeps serving the same
     person from the target account.
 
@@ -39,16 +38,15 @@ payment evidence and referral history still point at.
 
 import logging
 
-from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
 
 from apps.bot.models import TelegramProfile
-from apps.referral.models import Referral, ReferralCode
+from apps.referral.models import CheckoutRewardUse, Referral, ReferralCode, ReferralReward
+from apps.referral.services.rewards import lock_reward_users
 from apps.vpn.models import UserVpnSubscription
 from config.utils.exceptions import BadRequestException
 
-User = get_user_model()
 logger = logging.getLogger("apps")
 
 
@@ -90,12 +88,7 @@ def merge_bot_account_into(source, target):
     # pair in opposite directions would otherwise each hold one lock and
     # wait for the other. Re-read under the lock, so the bot-only check
     # below can't pass on a copy that has since been given a phone number.
-    locked = {
-        user.pk: user
-        for user in User.objects.select_for_update()
-        .filter(pk__in=[source.pk, target.pk])
-        .order_by("pk")
-    }
+    locked = {user.pk: user for user in lock_reward_users(source.pk, target.pk)}
     source, target = locked[source.pk], locked[target.pk]
 
     if not is_bot_only_account(source):
@@ -130,6 +123,8 @@ def merge_bot_account_into(source, target):
     # had a personal code the target keeps two; get_or_create_personal_code
     # shows the newest.
     ReferralCode.objects.filter(owner=source).update(owner=target)
+    ReferralReward.objects.filter(user=source).update(user=target)
+    CheckoutRewardUse.objects.filter(user=source).update(user=target)
 
     if source_profile is not None:
         source_profile.user = target

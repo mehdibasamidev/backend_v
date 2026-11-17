@@ -94,11 +94,20 @@ class VpnPricingConfigAdmin(admin.ModelAdmin):
     list_filter = ("is_active",)
 
 
+_PROOF_ACCOUNTING_FIELDS = (
+    "kind", "source", "amount", "extra_days", "extra_gb", "is_approved",
+    "reviewed_by", "reviewed_at", "applied_at",
+)
+
+
 class PaymentProofInline(admin.StackedInline):
     model = PaymentProof
     extra = 0
-    readonly_fields = ("created_at", "source", "ai_checked", "ai_verdict", "ai_notes", "admin_notified_at")
+    readonly_fields = _PROOF_ACCOUNTING_FIELDS + ("created_at", "ai_checked", "ai_verdict", "ai_notes", "admin_notified_at")
     ordering = ("-created_at",)
+
+    def has_add_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(UserVpnSubscription)
@@ -135,8 +144,24 @@ class PaymentProofAdmin(admin.ModelAdmin):
         "reviewed_by", "reviewed_at", "admin_notified_at", "created_at",
     )
     list_filter = ("is_approved", "kind", "source", "ai_verdict")
-    readonly_fields = ("source", "ai_checked", "ai_verdict", "ai_notes", "admin_notified_at", "created_at")
+    readonly_fields = _PROOF_ACCOUNTING_FIELDS + (
+        "subscription", "wallet_credit", "referral_discount", "ai_checked", "ai_verdict", "ai_notes",
+        "admin_notified_at", "created_at",
+    )
     actions = ["approve_selected", "reject_selected"]
+
+    def has_add_permission(self, request):
+        return False
+
+    @admin.display(description="Wallet credit (toman)")
+    def wallet_credit(self, proof):
+        reward = getattr(proof, "reward_use", None)
+        return reward.wallet_amount if reward else None
+
+    @admin.display(description="Referral discount (toman)")
+    def referral_discount(self, proof):
+        reward = getattr(proof, "reward_use", None)
+        return reward.discount_amount if reward else None
 
     def approve_selected(self, request, queryset):
         count = 0
@@ -155,7 +180,11 @@ class PaymentProofAdmin(admin.ModelAdmin):
     def reject_selected(self, request, queryset):
         count = 0
         for proof in queryset.filter(is_approved__isnull=True):
-            reject_payment_proof(proof, reviewed_by=request.user)
+            try:
+                reject_payment_proof(proof, reviewed_by=request.user)
+            except AppException as exc:
+                self.message_user(request, f"{proof}: {exc.message}", level=messages.ERROR)
+                continue
             count += 1
         self.message_user(request, f"{count} payment(s) rejected.")
     reject_selected.short_description = "Reject selected payments"

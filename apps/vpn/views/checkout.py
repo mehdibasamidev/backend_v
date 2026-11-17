@@ -1,10 +1,14 @@
+import uuid
+
 from rest_framework import serializers
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.parsers import MultiPartParser
+from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.renderers import JSONRenderer
 from drf_yasg.utils import swagger_auto_schema
 
+from apps.referral.models import RewardKind
+from apps.referral.services.rewards import quote_checkout_rewards
 from apps.vpn.models import PaymentProofSourceChoices
 from apps.vpn.serializers.subscriptions import UserVpnSubscriptionSerializer
 from apps.vpn.services.ai_receipt import analyze_payment_receipt
@@ -12,6 +16,7 @@ from apps.vpn.services.checkout import (
     create_paid_order,
     create_renewal_order,
     current_period_used_up,
+    purchase_plan_and_price,
 )
 from config.utils.custom_serializers import create_response_serializer
 from config.utils.exceptions import AppException
@@ -22,21 +27,12 @@ from config.utils.response import (
 )
 
 
-class CheckoutSerializer(serializers.Serializer):
-    """
-    One request that both picks the plan and submits the receipt, so we
-    never create an orphan 'pending_payment' subscription for someone who
-    just browsed the plan list and left.
-    """
+class PurchaseSelectionSerializer(serializers.Serializer):
     plan_id = serializers.UUIDField(required=False)
 
     volume_gb = serializers.IntegerField(required=False, min_value=0)
     duration_days = serializers.IntegerField(required=False, min_value=1)
     max_concurrent_users = serializers.IntegerField(required=False, min_value=0)
-
-    label = serializers.CharField(required=False, allow_blank=True, max_length=100)
-    receipt_image = serializers.FileField(required=False)
-    receipt_text = serializers.CharField(required=False, allow_blank=True)
 
     def validate(self, attrs):
         is_custom = attrs.get("plan_id") is None
@@ -51,11 +47,38 @@ class CheckoutSerializer(serializers.Serializer):
                     f"For a custom plan these fields are required: {', '.join(missing)}"
                 )
 
-        if not attrs.get("receipt_image") and not attrs.get("receipt_text"):
-            raise serializers.ValidationError(
-                "Provide at least a receipt image or a text reference (e.g. transaction id)."
-            )
         return attrs
+
+
+class CheckoutSerializer(PurchaseSelectionSerializer):
+    label = serializers.CharField(required=False, allow_blank=True, max_length=100)
+    receipt_image = serializers.FileField(required=False)
+    receipt_text = serializers.CharField(required=False, allow_blank=True)
+    reward_kind = serializers.ChoiceField(choices=RewardKind.choices, default=RewardKind.DISABLED)
+    expected_price = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, min_value=0)
+    expected_amount = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, min_value=0)
+    request_id = serializers.UUIDField(required=False)
+
+
+class CheckoutQuoteView(APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = [JSONParser]
+    renderer_classes = [JSONRenderer]
+
+    @swagger_auto_schema(request_body=PurchaseSelectionSerializer)
+    def post(self, request):
+        serializer = PurchaseSelectionSerializer(data=request.data)
+        if not serializer.is_valid():
+            return BadRequestResponse(errors=serializer.errors)
+        _, price = purchase_plan_and_price(**serializer.validated_data)
+        wallet_amount, discount, discount_amount = quote_checkout_rewards(request.user, price)
+        return SuccessResponse(data={
+            "request_id": str(uuid.uuid4()),
+            "price": str(price),
+            "wallet_amount": str(wallet_amount),
+            "discount_percent": str(discount.value) if discount_amount else None,
+            "discount_amount": str(discount_amount),
+        })
 
 
 class CheckoutView(APIView):
@@ -93,6 +116,10 @@ class CheckoutView(APIView):
                 receipt_image=data.get("receipt_image"),
                 receipt_text=data.get("receipt_text", ""),
                 source=PaymentProofSourceChoices.APP,
+                reward_kind=data.get("reward_kind", RewardKind.DISABLED),
+                expected_price=data.get("expected_price"),
+                expected_amount=data.get("expected_amount"),
+                request_id=data.get("request_id"),
             )
         except AppException as e:
             return BadRequestResponse(message=e.message)
@@ -103,7 +130,8 @@ class CheckoutView(APIView):
         # slow/failing AI call can never roll back a real order.
         # The bot container announces this proof to the admins (outbox).
         try:
-            analyze_payment_receipt(proof)
+            if not proof.ai_checked:
+                analyze_payment_receipt(proof)
         except Exception:
             pass
 

@@ -1,6 +1,7 @@
 from django.db import transaction
 from django.utils import timezone
 
+from apps.referral.services.rewards import award_first_purchase, lock_purchase_referral, release_checkout_reward
 from apps.vpn.models import PaymentProof, PaymentProofKindChoices
 from apps.vpn.services.provisioning import (
     activate_subscription,
@@ -8,8 +9,19 @@ from apps.vpn.services.provisioning import (
     reset_subscription_period,
     subscription_period_used_up,
 )
+from config.utils.exceptions import BadRequestException
 
 
+def _lock_pending_proof(proof):
+    pending = PaymentProof.objects.select_related("subscription").select_for_update(of=("self",)).filter(
+        pk=proof.pk, is_approved__isnull=True,
+    ).first()
+    if pending is None:
+        raise BadRequestException("This payment has already been reviewed or removed.")
+    return pending
+
+
+@transaction.atomic
 def approve_payment_proof(proof, reviewed_by=None, admin_note=""):
     """
     Single place that turns an approved receipt into a real change on the
@@ -23,7 +35,9 @@ def approve_payment_proof(proof, reviewed_by=None, admin_note=""):
     (apply_queued_renewal) the moment that period ends, so the customer
     still gets to use what they already paid for.
     """
-    # The panel call comes FIRST. Marking the proof approved and then
+    referral = lock_purchase_referral(proof)
+    proof = _lock_pending_proof(proof)
+    # The panel call comes before approval. Marking the proof approved and then
     # failing to provision would strand it: is_approved is no longer null,
     # so the review endpoint refuses to touch it again and the admin has no
     # way to retry - while the customer has paid and has nothing.
@@ -44,6 +58,7 @@ def approve_payment_proof(proof, reviewed_by=None, admin_note=""):
     if admin_note:
         proof.admin_note = admin_note
     proof.save(update_fields=["is_approved", "reviewed_by", "reviewed_at", "applied_at", "admin_note"])
+    award_first_purchase(proof, referral)
 
     return subscription
 
@@ -77,18 +92,21 @@ def apply_queued_renewal(proof_id):
         raise
 
 
+@transaction.atomic
 def reject_payment_proof(proof, reviewed_by=None, admin_note=""):
     """
     Rejecting a renewal must NOT kill the subscription - the user still
     has whatever they already paid for. Only a rejected initial purchase
     marks the subscription itself as rejected.
     """
+    proof = _lock_pending_proof(proof)
     proof.is_approved = False
     proof.reviewed_by = reviewed_by
     proof.reviewed_at = timezone.now()
     if admin_note:
         proof.admin_note = admin_note
     proof.save(update_fields=["is_approved", "reviewed_by", "reviewed_at", "admin_note"])
+    release_checkout_reward(proof)
 
     if proof.kind == PaymentProofKindChoices.PURCHASE:
         return reject_subscription(proof.subscription)

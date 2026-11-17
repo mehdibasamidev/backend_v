@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from apps.referral.models import Referral, ReferralCode, ReferralSettings
+from apps.referral.models import CheckoutRewardUse, Referral, ReferralCode, ReferralReward, ReferralSettings
 
 
 @admin.register(ReferralSettings)
@@ -10,6 +10,8 @@ class ReferralSettingsAdmin(admin.ModelAdmin):
         "required_for_signup",
         "personal_codes_enabled",
         "default_personal_max_uses",
+        "reward_kind",
+        "reward_value",
         "updated_at",
     )
 
@@ -41,11 +43,7 @@ class ReferralCodeAdmin(admin.ModelAdmin):
 
 @admin.register(Referral)
 class ReferralAdmin(admin.ModelAdmin):
-    """
-    The record the reward system will pay against. Read-only apart from the
-    reward fields, which are the only thing an admin should be adjusting by
-    hand.
-    """
+    """Reward status follows the payment and its ledger entry."""
     list_display = (
         "referred_user", "referrer", "code",
         "is_rewarded", "rewarded_at", "created_at",
@@ -57,8 +55,34 @@ class ReferralAdmin(admin.ModelAdmin):
         "referred_user__email",
         "referrer__username",
     )
-    readonly_fields = ("id", "code", "referrer", "referred_user", "created_at")
-    raw_id_fields = ("code", "referrer", "referred_user")
+    readonly_fields = ("id", "code", "referrer", "referred_user", "created_at", "is_rewarded", "rewarded_at", "reward_note")
 
     def has_add_permission(self, request):
         return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+class RewardAuditAdmin(admin.ModelAdmin):
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(ReferralReward)
+class ReferralRewardAdmin(RewardAuditAdmin):
+    list_display = ("user", "kind", "value", "purchase", "created_at")
+    list_select_related = ("user", "purchase")
+    list_filter = ("kind",)
+
+
+@admin.register(CheckoutRewardUse)
+class CheckoutRewardUseAdmin(RewardAuditAdmin):
+    list_display = ("user", "proof", "wallet_amount", "discount_amount", "released_at")
+    list_select_related = ("user", "proof")

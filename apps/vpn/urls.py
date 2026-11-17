@@ -1,7 +1,7 @@
 from django.urls import path
 
 from apps.vpn.views.plans import VpnPlanListView, CustomPlanOptionsView, CustomPlanQuoteView
-from apps.vpn.views.checkout import CheckoutView, RenewSubscriptionView
+from apps.vpn.views.checkout import CheckoutQuoteView, CheckoutView, RenewSubscriptionView
 from apps.vpn.views.dashboard import UserVpnSubscriptionListView, HideSubscriptionView
 from apps.vpn.views.admin_actions import ReviewPaymentProofView
 from apps.vpn.views.admin_inbounds import (
@@ -34,6 +34,7 @@ urlpatterns = [
     # deliberately no "create order, pay later" endpoint - that only
     # produced orphan pending records for people who browsed and left.
     path("vpn/checkout/", CheckoutView.as_view(), name="vpn-checkout"),
+    path("vpn/checkout/quote/", CheckoutQuoteView.as_view(), name="vpn-checkout-quote"),
 
     path(
         "vpn/subscriptions/<uuid:subscription_id>/renew/",

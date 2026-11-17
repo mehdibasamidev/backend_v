@@ -1,5 +1,7 @@
 from django.db import transaction
 
+from apps.referral.models import CheckoutRewardUse, RewardKind
+from apps.referral.services.rewards import ZERO, lock_reward_users, quote_checkout_rewards
 from apps.vpn.models import (
     VpnPlan,
     UserVpnSubscription,
@@ -17,6 +19,18 @@ from apps.vpn.services.pricing import (
 from config.utils.exceptions import BadRequestException
 
 
+def purchase_plan_and_price(*, plan_id=None, volume_gb=None, duration_days=None, max_concurrent_users=None):
+    if plan_id:
+        try:
+            plan = VpnPlan.objects.get(id=plan_id, is_active=True)
+        except VpnPlan.DoesNotExist as exc:
+            raise BadRequestException("Selected plan was not found or is no longer available") from exc
+        return plan, plan.price
+    return None, calculate_custom_plan_price(
+        volume_gb=volume_gb, duration_days=duration_days, max_concurrent_users=max_concurrent_users,
+    )
+
+
 @transaction.atomic
 def create_paid_order(
     user,
@@ -28,6 +42,10 @@ def create_paid_order(
     receipt_image=None,
     receipt_text="",
     source=PaymentProofSourceChoices.APP,
+    reward_kind=RewardKind.DISABLED,
+    expected_price=None,
+    expected_amount=None,
+    request_id=None,
 ):
     """
     Creates a subscription together with its payment proof, in one atomic
@@ -42,51 +60,77 @@ def create_paid_order(
 
     Returns (subscription, payment_proof).
     """
-    if plan_id:
-        try:
-            plan = VpnPlan.objects.get(id=plan_id, is_active=True)
-        except VpnPlan.DoesNotExist:
-            raise BadRequestException("Selected plan was not found or is no longer available")
+    using_reward = reward_kind != RewardKind.DISABLED
+    if using_reward:
+        if (
+            source != PaymentProofSourceChoices.APP
+            or reward_kind not in (RewardKind.WALLET, RewardKind.DISCOUNT)
+            or None in (expected_price, expected_amount, request_id)
+        ):
+            raise BadRequestException("Get a current checkout quote before using a reward.")
+        if not any(account.is_active for account in lock_reward_users(user.pk)):
+            raise BadRequestException("Sign in again before using your rewards.")
+        existing = CheckoutRewardUse.objects.select_related("proof__subscription").filter(
+            user=user, request_id=request_id,
+        ).first()
+        if existing:
+            return existing.proof.subscription, existing.proof
 
-        subscription = UserVpnSubscription.objects.create(
-            user=user,
-            label=label,
-            source=PlanSourceChoices.FIXED,
-            plan=plan,
-            volume_gb=plan.volume_gb,
-            purchased_volume_gb=plan.volume_gb,
-            duration_days=plan.duration_days,
-            max_concurrent_users=plan.max_concurrent_users,
-            price=plan.price,
-            status=SubscriptionStatusChoices.PENDING_APPROVAL,
+    plan, price = purchase_plan_and_price(
+        plan_id=plan_id, volume_gb=volume_gb, duration_days=duration_days,
+        max_concurrent_users=max_concurrent_users,
+    )
+    wallet_amount = discount_amount = ZERO
+    discount = None
+    if using_reward:
+        available_wallet, available_discount, available_savings = quote_checkout_rewards(user, price)
+        if reward_kind == RewardKind.WALLET and available_wallet > ZERO:
+            wallet_amount = available_wallet
+        elif reward_kind == RewardKind.DISCOUNT and available_savings > ZERO:
+            discount, discount_amount = available_discount, available_savings
+        else:
+            raise BadRequestException("That reward is no longer available. Refresh checkout before paying.")
+
+    amount = price - wallet_amount - discount_amount
+    if (expected_price is not None and expected_price != price) or (
+        expected_amount is not None and expected_amount != amount
+    ):
+        raise BadRequestException("Your checkout total changed. Refresh checkout before paying.")
+
+    if source == PaymentProofSourceChoices.APP and (not using_reward or amount > ZERO):
+        if not receipt_image and not receipt_text.strip():
+            raise BadRequestException("Provide a receipt image or a transaction reference.")
+
+    if plan:
+        volume_gb, duration_days, max_concurrent_users = (
+            plan.volume_gb, plan.duration_days, plan.max_concurrent_users,
         )
-    else:
-        price = calculate_custom_plan_price(
-            volume_gb=volume_gb,
-            duration_days=duration_days,
-            max_concurrent_users=max_concurrent_users,
-        )
-        subscription = UserVpnSubscription.objects.create(
-            user=user,
-            label=label,
-            source=PlanSourceChoices.CUSTOM,
-            plan=None,
-            volume_gb=volume_gb,
-            purchased_volume_gb=volume_gb,
-            duration_days=duration_days,
-            max_concurrent_users=max_concurrent_users,
-            price=price,
-            status=SubscriptionStatusChoices.PENDING_APPROVAL,
-        )
+    subscription = UserVpnSubscription.objects.create(
+        user=user,
+        label=label,
+        source=PlanSourceChoices.FIXED if plan else PlanSourceChoices.CUSTOM,
+        plan=plan,
+        volume_gb=volume_gb,
+        purchased_volume_gb=volume_gb,
+        duration_days=duration_days,
+        max_concurrent_users=max_concurrent_users,
+        price=price,
+        status=SubscriptionStatusChoices.PENDING_APPROVAL,
+    )
 
     proof = PaymentProof.objects.create(
         subscription=subscription,
         kind=PaymentProofKindChoices.PURCHASE,
-        amount=subscription.price,
+        amount=amount,
         receipt_image=receipt_image,
         receipt_text=receipt_text,
         source=source,
     )
+    if using_reward:
+        CheckoutRewardUse.objects.create(
+            proof=proof, user=user, request_id=request_id, wallet_amount=wallet_amount,
+            discount=discount, discount_amount=discount_amount,
+        )
     return subscription, proof
 
 

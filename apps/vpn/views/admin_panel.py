@@ -227,7 +227,7 @@ class AdminPaymentProofListView(APIView):
     )
     def get(self, request):
         proofs = PaymentProof.objects.select_related(
-            "subscription", "subscription__user", "subscription__plan"
+            "subscription", "subscription__user", "subscription__plan", "reward_use"
         )
 
         status_filter = request.GET.get("status", "pending")

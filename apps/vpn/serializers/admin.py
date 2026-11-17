@@ -178,11 +178,17 @@ class AdminPaymentProofSerializer(serializers.ModelSerializer):
     subscription_id = serializers.UUIDField(read_only=True)
     receipt_image_url = serializers.SerializerMethodField()
     plan_summary = serializers.SerializerMethodField()
+    wallet_amount = serializers.DecimalField(
+        source="reward_use.wallet_amount", max_digits=12, decimal_places=2, read_only=True, default=0,
+    )
+    discount_amount = serializers.DecimalField(
+        source="reward_use.discount_amount", max_digits=12, decimal_places=2, read_only=True, default=0,
+    )
 
     class Meta:
         model = PaymentProof
         fields = [
-            "id", "subscription_id", "user", "kind", "amount",
+            "id", "subscription_id", "user", "kind", "amount", "wallet_amount", "discount_amount",
             "extra_days", "extra_gb",
             "plan_summary",
             "receipt_image_url", "receipt_text",
