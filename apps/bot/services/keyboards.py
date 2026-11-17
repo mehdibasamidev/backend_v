@@ -26,7 +26,7 @@ REFERRAL_BUTTON_PATTERN = rf"\A{re.escape(REFERRAL_BUTTON)}(?: \(دریافت [�
 
 MENU_ROWS = (
     (
-        ("plans", "🚀 خرید سرویس جدید", "menu:plans", "primary"),
+        ("plans", "🛒 خرید سرویس جدید", "menu:plans", "primary"),
         ("renew", "♻️ تمدید سرویس", "menu:renew", "primary"),
     ),
     (("mycode", REFERRAL_BUTTON, "menu:referral", "primary"),),

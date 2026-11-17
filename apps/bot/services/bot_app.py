@@ -130,7 +130,13 @@ def build_application(*, for_polling: bool = False) -> Application:
             application.add_handler(CommandHandler(command, handler, filters=filters.ChatType.PRIVATE))
             # Reply-keyboard taps arrive as text. Match them before the
             # receipt handler so they can't be mistaken for tracking codes.
-            button_filter = filters.Regex(REFERRAL_BUTTON_PATTERN) if command == "mycode" else filters.Text([label])
+            if command == "mycode":
+                button_filter = filters.Regex(REFERRAL_BUTTON_PATTERN)
+            elif command == "plans":
+                # Existing persistent keyboards may still display the rocket.
+                button_filter = filters.Text([label, "🚀 خرید سرویس جدید"])
+            else:
+                button_filter = filters.Text([label])
             application.add_handler(MessageHandler(filters.ChatType.PRIVATE & button_filter, handler))
 
     # ------------------------------------------------------------------
