@@ -29,7 +29,7 @@ MENU_ROWS = (
         ("plans", "🚀 خرید سرویس جدید", "menu:plans", "primary"),
         ("renew", "♻️ تمدید سرویس", "menu:renew", "primary"),
     ),
-    (("mycode", REFERRAL_BUTTON, "menu:referral", None),),
+    (("mycode", REFERRAL_BUTTON, "menu:referral", "primary"),),
     (("mysubs", "📲 سرویس‌های من", "menu:subscriptions", None),),
     (("wallet", "💰 اعتبار من", "menu:wallet", None),),
 )
