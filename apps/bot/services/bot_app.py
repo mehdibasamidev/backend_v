@@ -26,6 +26,7 @@ from apps.bot.handlers import (
 )
 from apps.bot.services.bot_settings import arecord_running_bot
 from apps.bot.services.keyboards import MENU_ROWS, REFERRAL_BUTTON_PATTERN
+from apps.bot.services.polling_health import PollingRequest
 
 
 _application: Application | None = None
@@ -89,11 +90,17 @@ def build_application(*, for_polling: bool = False) -> Application:
     proxy = getattr(settings, "TELEGRAM_PROXY_URL", "")
 
     if proxy:
-        builder = (
-            builder
-            .proxy(proxy)
-            .get_updates_proxy(proxy)
+        builder = builder.proxy(proxy)
+
+    if for_polling:
+        polling_request = PollingRequest(
+            proxy=proxy or None,
+            connection_pool_size=1,
+            connect_timeout=20.0,
+            read_timeout=20.0,
+            write_timeout=20.0,
         )
+        builder = builder.get_updates_request(polling_request)
 
     # Telegram API requests can take longer when going through a proxy,
     # so use explicit timeouts instead of relying on short defaults.
@@ -105,6 +112,8 @@ def build_application(*, for_polling: bool = False) -> Application:
     )
 
     application = builder.build()
+    if for_polling:
+        application.bot_data["polling_request"] = polling_request
 
     # ------------------------------------------------------------------
     # Commands

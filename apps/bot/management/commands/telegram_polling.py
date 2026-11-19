@@ -9,6 +9,7 @@ from apps.bot.services.bot_app import build_application, register_menu_commands
 from apps.bot.services.bot_settings import arecord_running_bot_until_done
 from apps.bot.services.proof_notifier import run_proof_notifier
 from apps.bot.services.subscription_monitor import run_subscription_monitor
+from apps.bot.services.polling_health import wait_for_polling
 
 
 logger = logging.getLogger("apps")
@@ -140,7 +141,7 @@ class Command(BaseCommand):
                 # on its own, because the telegram_bot service uses:
                 #
                 # restart: unless-stopped
-                await stop.wait()
+                await wait_for_polling(stop, application.bot_data["polling_request"])
 
             finally:
                 menu_registration.cancel()
