@@ -156,8 +156,9 @@ def activate_subscription(subscription):
     inbound_ids = resolve_inbound_ids(subscription)
 
     now = timezone.now()
-    expires_at = now + timedelta(days=subscription.duration_days)
-    expiry_time_ms = int(expires_at.timestamp() * 1000)
+    # Zero is the shared sentinel for a service with no time limit.
+    expires_at = now + timedelta(days=subscription.duration_days) if subscription.duration_days else None
+    expiry_time_ms = int(expires_at.timestamp() * 1000) if expires_at else 0
     total_gb_bytes = 0 if subscription.is_unlimited_volume else subscription.volume_gb * (1024 ** 3)
     limit_ip = 0 if subscription.is_unlimited_users else subscription.max_concurrent_users
 

@@ -36,6 +36,10 @@ def fa_number(value):
     return text.translate(_FA_DIGITS)
 
 
+def duration_label(days):
+    return "بدون محدودیت زمانی" if days == 0 else f"{fa_number(days)} روز"
+
+
 def fa_decimal_amount(value):
     digits = f"{Decimal(value):,.2f}".rstrip("0").rstrip(".")
     return fa_number(digits).replace(",", "٬")

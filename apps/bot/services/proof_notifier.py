@@ -26,6 +26,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import BadRequest, NetworkError, RetryAfter, TelegramError
 
 from apps.bot.services.admin_access import admin_chat_ids
+from apps.bot.services.formatting import duration_label
 from apps.vpn.models import PaymentProof, PaymentProofKindChoices, PaymentProofSourceChoices
 
 logger = logging.getLogger(__name__)
@@ -115,7 +116,7 @@ def _plan_label(subscription):
     plan_name = subscription.plan.name if subscription.plan else "سفارشی"
     volume = "نامحدود" if subscription.is_unlimited_volume else f"{subscription.volume_gb}GB"
     users = "نامحدود" if subscription.is_unlimited_users else subscription.max_concurrent_users
-    return f"{plan_name} ({volume} / {subscription.duration_days} روز / کاربر: {users})"
+    return f"{plan_name} ({volume} / {duration_label(subscription.duration_days)} / کاربر: {users})"
 
 
 @dataclass

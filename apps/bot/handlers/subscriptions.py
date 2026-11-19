@@ -6,6 +6,7 @@ from telegram.ext import ContextTypes
 
 from apps.bot.services.formatting import (
     RLM,
+    duration_label,
     client_name,
     fa_number,
     fa_price,
@@ -37,7 +38,7 @@ STATUS_LABELS_FA = {
 
 def _amounts(days, volume_gb):
     volume = "حجم نامحدود" if volume_gb == 0 else f"{volume_gb} گیگ"
-    return f"{volume} / {days} روز"
+    return f"{volume} / {duration_label(days)}"
 
 
 async def list_renewable_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -127,9 +128,11 @@ async def list_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 if subscription.is_unlimited_volume
                 else f"{fa_number(subscription.remaining_volume_gb)} گیگ باقی‌مونده"
             )
-            rows.append(rtl_line(
-                f"{volume_text} | {fa_number(subscription.remaining_days)} روز باقی‌مونده"
-            ))
+            time_text = (
+                "بدون محدودیت زمانی" if subscription.expires_at is None
+                else f"{fa_number(subscription.remaining_days)} روز باقی‌مونده"
+            )
+            rows.append(rtl_line(f"{volume_text} | {time_text}"))
             if subscription.subscription_link:
                 rows.append(rtl_line(f"لینک ساب: {subscription.subscription_link}"))
         line = "\n".join(rows)

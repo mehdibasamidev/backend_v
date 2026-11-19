@@ -4,7 +4,7 @@ from asgiref.sync import sync_to_async
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from apps.bot.services.formatting import rtl_line, service_label
+from apps.bot.services.formatting import rtl_line, service_label, duration_label
 from apps.bot.services.admin_access import check_can_review
 from apps.vpn.models import PaymentProof
 from apps.vpn.models import PaymentProofKindChoices
@@ -140,7 +140,7 @@ async def review(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "🎉 پرداختت تایید شد و سرویست فعال شد!\n"
                 f"{service_line}\n"
                 f"لینک ساب: {subscription.subscription_link}\n"
-                f"مدت: {subscription.duration_days} روز"
+                f"مدت: {duration_label(subscription.duration_days)}"
             )
     else:
         result_text = "❌ رد شد."
