@@ -40,8 +40,7 @@ class XuiInbound(models.Model):
     protocol = models.CharField(max_length=32, blank=True)
     port = models.PositiveIntegerField(null=True, blank=True)
     is_enabled_on_panel = models.BooleanField(default=True)
-    # A sync never deletes rows: groups reference them, and the admin has
-    # to be able to see which group just lost a server.
+    # Keep mirror rows for diagnostics after removing their group memberships.
     exists_on_panel = models.BooleanField(
         default=True,
         help_text="False when the latest sync did not return this inbound",

@@ -2,7 +2,7 @@ import logging
 
 import requests
 from django.db import transaction
-from django.db.models import Count, ProtectedError, Q
+from django.db.models import Count, Prefetch, ProtectedError, Q
 from django.utils import timezone
 
 from apps.vpn.models import InboundGroup, XuiInbound
@@ -62,8 +62,8 @@ def sync_inbounds_from_panel(client=None):
     Upserts the local mirror from the panel and returns every row, ordered
     by panel_id.
 
-    Rows the panel no longer returns are flagged exists_on_panel=False,
-    never deleted - see XuiInbound. Raises InboundSyncError (a 400 through
+    Rows the panel no longer returns are flagged exists_on_panel=False
+    and removed from their groups. Raises InboundSyncError (a 400 through
     the exception handler) when the panel cannot be read or returns no
     inbounds at all.
     """
@@ -98,8 +98,8 @@ def sync_inbounds_from_panel(client=None):
         for row in rows:
             panel_id = _as_int(row.get("id"))
             if panel_id is None or panel_id < 0:
-                logger.warning("Skipping panel inbound with unusable id %r", row.get("id"))
-                continue
+                # An incomplete snapshot must not detach group members.
+                raise InboundSyncError("The panel returned an inbound with an invalid id.")
             seen.add(panel_id)
 
             port = _as_int(row.get("port"))
@@ -138,6 +138,9 @@ def sync_inbounds_from_panel(client=None):
         XuiInbound.objects.exclude(panel_id__in=seen).filter(exists_on_panel=True).update(
             exists_on_panel=False, updated_at=now,
         )
+        InboundGroup.inbounds.through.objects.filter(
+            xuiinbound__exists_on_panel=False,
+        ).delete()
 
     return list(XuiInbound.objects.order_by("panel_id"))
 
@@ -176,7 +179,9 @@ def inbound_groups_with_details():
     return (
         InboundGroup.objects
         .annotate(plan_count=Count("plans", distinct=True))
-        .prefetch_related("inbounds")
+        .prefetch_related(Prefetch(
+            "inbounds", queryset=XuiInbound.objects.filter(exists_on_panel=True),
+        ))
         # Explicit: Django drops Meta.ordering from aggregate (GROUP BY)
         # queries, so the default-first order would silently disappear.
         .order_by("-is_default", "name")

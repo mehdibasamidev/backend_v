@@ -95,9 +95,7 @@ class AdminXuiInboundSerializer(serializers.ModelSerializer):
 class AdminInboundGroupSerializer(serializers.ModelSerializer):
     """
     Groups are written with PANEL inbound ids (what the admin sees on 3x-ui),
-    not our row uuids. Any mirrored inbound is accepted, including one the
-    last sync flagged missing, so re-saving a group that lost a server
-    doesn't fail - provisioning skips missing ones anyway.
+    not our row uuids. Only inbounds that still exist on the panel can be added.
 
     Expects the queryset from services.inbounds.inbound_groups_with_details()
     so the list endpoint stays at a fixed number of queries.
@@ -109,7 +107,7 @@ class AdminInboundGroupSerializer(serializers.ModelSerializer):
         slug_field="panel_id",
         many=True,
         allow_empty=False,
-        queryset=XuiInbound.objects.all(),
+        queryset=XuiInbound.objects.filter(exists_on_panel=True),
     )
     inbounds = AdminXuiInboundSerializer(many=True, read_only=True)
     plan_count = serializers.SerializerMethodField()

@@ -38,14 +38,14 @@ class AdminInboundListView(APIView):
     renderer_classes = [JSONRenderer]
 
     @swagger_auto_schema(
-        operation_description="Every mirrored inbound, ordered by panel id. data is a list.",
+        operation_description="Inbounds still on the panel, ordered by panel id. data is a list.",
         responses={200: create_response_serializer(
             data_serializer_class=AdminXuiInboundSerializer,
             text_message="Inbounds retrieved successfully",
         )},
     )
     def get(self, request):
-        inbounds = XuiInbound.objects.order_by("panel_id")
+        inbounds = XuiInbound.objects.filter(exists_on_panel=True).order_by("panel_id")
         return SuccessResponse(
             data=AdminXuiInboundSerializer(inbounds, many=True).data,
             message="Inbounds retrieved successfully",
@@ -60,7 +60,7 @@ class AdminInboundSyncView(APIView):
     @swagger_auto_schema(
         operation_description=(
             "Reads the inbound list from the 3x-ui panel and updates the mirror. "
-            "Inbounds the panel no longer has are kept and flagged exists_on_panel=false. "
+            "Missing inbounds are removed from groups and omitted from the response. "
             "data is a list."
         ),
         responses={200: create_response_serializer(
@@ -71,7 +71,7 @@ class AdminInboundSyncView(APIView):
     def post(self, request):
         # A panel failure raises InboundSyncError, which the exception
         # handler turns into a 400 with the reason.
-        inbounds = sync_inbounds_from_panel()
+        inbounds = [inbound for inbound in sync_inbounds_from_panel() if inbound.exists_on_panel]
         return SuccessResponse(
             data=AdminXuiInboundSerializer(inbounds, many=True).data,
             message="Inbounds synced from the panel",
